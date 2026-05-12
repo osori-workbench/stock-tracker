@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 SCHEDULES = {
+    "morning": {"hour": 8, "minute": 0},
     "open": {"hour": 9, "minute": 10},
     "noon": {"hour": 12, "minute": 0},
     "close": {"hour": 15, "minute": 40},

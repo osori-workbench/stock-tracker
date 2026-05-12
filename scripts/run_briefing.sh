@@ -8,7 +8,7 @@ PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
 
 MODE="${1:-}"
 if [ -z "$MODE" ]; then
-  echo "usage: $0 <open|noon|close>" >&2
+  echo "usage: $0 <morning|open|noon|close>" >&2
   exit 1
 fi
 

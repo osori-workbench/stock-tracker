@@ -27,7 +27,7 @@ for path in paths:
     print(path)
 PY
 
-for mode in open noon close; do
+for mode in morning open noon close; do
   label="$LABEL_PREFIX.$mode"
   plist="$LAUNCH_AGENTS_DIR/$label.plist"
   launchctl bootout "gui/$UID_VALUE/$label" >/dev/null 2>&1 || true
@@ -35,6 +35,7 @@ for mode in open noon close; do
   launchctl enable "gui/$UID_VALUE/$label"
 done
 
+launchctl print "gui/$UID_VALUE/$LABEL_PREFIX.morning" | sed -n '1,40p'
 launchctl print "gui/$UID_VALUE/$LABEL_PREFIX.open" | sed -n '1,40p'
 launchctl print "gui/$UID_VALUE/$LABEL_PREFIX.noon" | sed -n '1,40p'
 launchctl print "gui/$UID_VALUE/$LABEL_PREFIX.close" | sed -n '1,40p'

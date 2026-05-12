@@ -51,7 +51,11 @@ class BriefingData:
     market_label: str
     indices: list[IndexSnapshot]
     exchange_rate: ExchangeRateSnapshot | None
-    investors: InvestorSnapshot
+    investors: InvestorSnapshot | None = None
     leaders: list[TopStock] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    global_markets: list[IndexSnapshot] = field(default_factory=list)
+    headlines: list[str] = field(default_factory=list)
+    oil_markets: list[IndexSnapshot] = field(default_factory=list)
+    oil_headlines: list[str] = field(default_factory=list)

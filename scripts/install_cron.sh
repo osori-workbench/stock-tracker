@@ -11,6 +11,7 @@ cleanup() {
 trap cleanup EXIT
 
 (crontab -l 2>/dev/null || true) \
+  | grep -v 'stock-tracker-morning' \
   | grep -v 'stock-tracker-open' \
   | grep -v 'stock-tracker-noon' \
   | grep -v 'stock-tracker-close' \

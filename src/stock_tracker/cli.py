@@ -11,9 +11,12 @@ from stock_tracker.naver import NaverClient
 from stock_tracker.slack import SlackWebhookClient
 
 
+VALID_MODES = ["morning", "open", "noon", "close"]
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Send Korean stock briefings to Slack webhook')
-    parser.add_argument('mode', choices=['open', 'noon', 'close'])
+    parser.add_argument('mode', choices=VALID_MODES)
     parser.add_argument('--at', help='Override current time in ISO-8601 format')
     return parser
 

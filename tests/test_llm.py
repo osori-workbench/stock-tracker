@@ -68,7 +68,7 @@ def make_data() -> BriefingData:
 def test_hermes_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
     runner = FakeRunner(
         FakeCompletedProcess(
-            stdout="session_id: 20260512_200148_92e18c\n- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다.\n"
+            stdout="session_id: 20260512_200148_92e18c\n- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다.\n전략: 오늘 제 대응은 관망 후 강한 종목만 소액 분할 매수입니다.\n"
         )
     )
     generator = HermesCliReviewGenerator(hermes_bin="/Users/osori/.local/bin/hermes", runner=runner, model="gpt-5.4")
@@ -81,6 +81,7 @@ def test_hermes_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
             "환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.",
             "추격매수보다 주도주 지속성 확인이 더 중요합니다.",
         ],
+        strategy="오늘 제 대응은 관망 후 강한 종목만 소액 분할 매수입니다.",
         fallback_notice=None,
     )
     assert runner.calls[0]["command"][0] == "/Users/osori/.local/bin/hermes"
