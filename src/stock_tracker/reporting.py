@@ -108,9 +108,16 @@ def build_leaders_block(data: BriefingData) -> dict | None:
     }
 
 
-def build_review_block(data: BriefingData, review_points: list[str] | None = None) -> dict:
+def build_review_block(
+    data: BriefingData,
+    review_points: list[str] | None = None,
+    fallback_notice: str | None = None,
+) -> dict:
     points = review_points or build_review_points(data)
-    lines = [f"• {point}" for point in points]
+    lines: list[str] = []
+    if fallback_notice:
+        lines.append(f"• {fallback_notice}")
+    lines.extend(f"• {point}" for point in points)
     if data.notes:
         lines.append(f"• 참고: {' / '.join(data.notes)}")
     return {
@@ -119,7 +126,11 @@ def build_review_block(data: BriefingData, review_points: list[str] | None = Non
     }
 
 
-def build_briefing_payload(data: BriefingData, review_points: list[str] | None = None) -> dict:
+def build_briefing_payload(
+    data: BriefingData,
+    review_points: list[str] | None = None,
+    fallback_notice: str | None = None,
+) -> dict:
     summary = build_summary_text(data)
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": summary, "emoji": True}},
@@ -130,7 +141,7 @@ def build_briefing_payload(data: BriefingData, review_points: list[str] | None =
         blocks.append(leaders_block)
     blocks.extend(
         [
-            build_review_block(data, review_points=review_points),
+            build_review_block(data, review_points=review_points, fallback_notice=fallback_notice),
             {"type": "divider"},
         ]
     )

@@ -107,3 +107,20 @@ def test_build_briefing_payload_prefers_llm_review_points_when_provided() -> Non
     assert "외국인 중심 수급이 지수를 버티게 했습니다." in blocks_text
     assert "환율 상승 부담은 남아 있어도 투매 해석까지는 아닙니다." in blocks_text
     assert "외국인·기관이 함께 매도하고 개인만 크게 받아낸 날" not in blocks_text
+
+
+def test_build_briefing_payload_shows_fallback_notice_when_present() -> None:
+    payload = build_briefing_payload(
+        make_data(),
+        review_points=["외국인과 기관 동반 매도가 이어졌습니다."],
+        fallback_notice="추론이 실패해서 규칙기반으로 나온 리뷰입니다.",
+    )
+    blocks_text = "\n".join(
+        item["text"]
+        for block in payload["blocks"]
+        for item in block.get("fields", []) + ([block["text"]] if "text" in block else [])
+        if isinstance(item, dict) and item.get("type") == "mrkdwn"
+    )
+
+    assert "추론이 실패해서 규칙기반으로 나온 리뷰입니다." in blocks_text
+    assert "외국인과 기관 동반 매도가 이어졌습니다." in blocks_text

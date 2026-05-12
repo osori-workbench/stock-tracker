@@ -6,6 +6,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from stock_tracker.calendar import KST, is_market_session_open
+from stock_tracker.llm import ReviewResult
 from stock_tracker.models import BriefingData
 from stock_tracker.naver import NaverClient
 from stock_tracker.reporting import build_briefing_payload
@@ -19,7 +20,7 @@ MODE_LABELS = {
 
 
 class ReviewGenerator(Protocol):
-    def generate(self, data: BriefingData) -> list[str]: ...
+    def generate(self, data: BriefingData) -> ReviewResult: ...
 
 
 @dataclass(slots=True)
@@ -65,7 +66,11 @@ def run_mode(
         raise ValueError('collector and slack must be provided')
 
     briefing = collector.collect(mode, current)
-    review_points = reviewer.generate(briefing) if reviewer is not None else None
-    payload = build_briefing_payload(briefing, review_points=review_points)
+    review_result = reviewer.generate(briefing) if reviewer is not None else None
+    payload = build_briefing_payload(
+        briefing,
+        review_points=review_result.points if review_result is not None and review_result.points else None,
+        fallback_notice=review_result.fallback_notice if review_result is not None else None,
+    )
     slack.send(payload)
     return True

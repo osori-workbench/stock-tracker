@@ -1,32 +1,39 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from stock_tracker.llm import OpenAIReviewGenerator
+from stock_tracker.llm import CodexCliReviewGenerator, ReviewResult
 from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 
 
 KST = ZoneInfo("Asia/Seoul")
 
 
-class FakeResponse:
-    def __init__(self, payload: dict) -> None:
-        self.payload = payload
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict:
-        return self.payload
+class FakeCompletedProcess:
+    def __init__(self, stdout: str, returncode: int = 0, stderr: str = "") -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+        self.stderr = stderr
 
 
-class FakeSession:
-    def __init__(self, payload: dict) -> None:
-        self.payload = payload
+class FakeRunner:
+    def __init__(self, result: FakeCompletedProcess | Exception) -> None:
+        self.result = result
         self.calls: list[dict] = []
 
-    def post(self, url: str, *, headers: dict, json: dict, timeout: int) -> FakeResponse:
-        self.calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
-        return FakeResponse(self.payload)
+    def __call__(self, command: list[str], *, input: str, text: bool, capture_output: bool, timeout: int, check: bool) -> FakeCompletedProcess:
+        self.calls.append(
+            {
+                "command": command,
+                "input": input,
+                "text": text,
+                "capture_output": capture_output,
+                "timeout": timeout,
+                "check": check,
+            }
+        )
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
 
 
 def make_data() -> BriefingData:
@@ -59,30 +66,42 @@ def make_data() -> BriefingData:
     )
 
 
-def test_openai_review_generator_parses_bullets_and_builds_prompt() -> None:
-    session = FakeSession(
-        {
-            "choices": [
-                {
-                    "message": {
-                        "content": "- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다."
-                    }
-                }
-            ]
-        }
+def test_codex_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
+    runner = FakeRunner(
+        FakeCompletedProcess(
+            stdout="- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다.\n"
+        )
     )
-    generator = OpenAIReviewGenerator(api_key="test-key", session=session, model="gpt-4.1-mini")
+    generator = CodexCliReviewGenerator(codex_bin="/Applications/Codex.app/Contents/Resources/codex", runner=runner)
 
-    review = generator.generate(make_data())
+    result = generator.generate(make_data())
 
-    assert review == [
-        "외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.",
-        "환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.",
-        "추격매수보다 주도주 지속성 확인이 더 중요합니다.",
+    assert result == ReviewResult(
+        points=[
+            "외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.",
+            "환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.",
+            "추격매수보다 주도주 지속성 확인이 더 중요합니다.",
+        ],
+        fallback_notice=None,
+    )
+    assert runner.calls[0]["command"] == [
+        "/Applications/Codex.app/Contents/Resources/codex",
+        "exec",
+        "--skip-git-repo-check",
+        "-m",
+        "gpt-5-codex",
+        "-",
     ]
-    assert session.calls[0]["url"] == "https://api.openai.com/v1/chat/completions"
-    assert session.calls[0]["headers"]["Authorization"] == "Bearer test-key"
-    user_prompt = session.calls[0]["json"]["messages"][1]["content"]
-    assert "KOSPI" in user_prompt
-    assert "삼성전자" in user_prompt
-    assert "JSON 데이터" in user_prompt
+    assert "KOSPI" in runner.calls[0]["input"]
+    assert "삼성전자" in runner.calls[0]["input"]
+    assert "JSON 데이터" in runner.calls[0]["input"]
+
+
+def test_codex_cli_review_generator_returns_fallback_notice_when_command_fails() -> None:
+    runner = FakeRunner(RuntimeError("codex failed"))
+    generator = CodexCliReviewGenerator(codex_bin="codex", runner=runner)
+
+    result = generator.generate(make_data())
+
+    assert result.points == []
+    assert result.fallback_notice == "추론이 실패해서 규칙기반으로 나온 리뷰입니다."

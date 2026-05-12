@@ -16,7 +16,7 @@
 ## 로컬 실행
 ```bash
 cp .env.example .env
-# .env 에 Slack webhook URL, OpenAI API key 입력
+# .env 에 Slack webhook URL 입력
 chmod +x scripts/run_briefing.sh scripts/install_launchd.sh scripts/uninstall_launchd.sh
 uv sync --group dev
 uv run stock-tracker open
@@ -24,8 +24,9 @@ uv run stock-tracker noon
 uv run stock-tracker close
 ```
 
-`OPENAI_API_KEY`가 있으면 마지막 *종합 리뷰*는 GPT 자유서술로 생성되고,
-없으면 기존 규칙 기반 리뷰로 자동 fallback 됩니다.
+기본적으로 마지막 *종합 리뷰*는 Codex CLI 자유서술 추론으로 생성됩니다.
+Codex 실행이 실패하면 규칙 기반 리뷰로 자동 fallback 되고,
+메시지 안에 `추론이 실패해서 규칙기반으로 나온 리뷰입니다.` 안내가 표시됩니다.
 
 ## 테스트
 ```bash

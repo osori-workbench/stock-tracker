@@ -2,6 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from stock_tracker.app import run_mode
+from stock_tracker.llm import ReviewResult
 from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot
 
 
@@ -27,13 +28,13 @@ class FakeSlack:
 
 
 class FakeReviewer:
-    def __init__(self, review_points: list[str]) -> None:
-        self.review_points = review_points
+    def __init__(self, result: ReviewResult) -> None:
+        self.result = result
         self.calls: list[BriefingData] = []
 
-    def generate(self, data: BriefingData) -> list[str]:
+    def generate(self, data: BriefingData) -> ReviewResult:
         self.calls.append(data)
-        return self.review_points
+        return self.result
 
 
 def make_payload() -> BriefingData:
@@ -99,10 +100,15 @@ def test_run_mode_sends_message_when_market_open() -> None:
 def test_run_mode_uses_reviewer_output_when_provided() -> None:
     collector = FakeCollector(make_payload())
     slack = FakeSlack()
-    reviewer = FakeReviewer([
-        "외국인 매수 우위가 지수 방어에 기여했습니다.",
-        "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다.",
-    ])
+    reviewer = FakeReviewer(
+        ReviewResult(
+            points=[
+                "외국인 매수 우위가 지수 방어에 기여했습니다.",
+                "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다.",
+            ],
+            fallback_notice=None,
+        )
+    )
 
     sent = run_mode(
         mode="open",
@@ -117,3 +123,27 @@ def test_run_mode_uses_reviewer_output_when_provided() -> None:
     review_block_text = slack.messages[0]["blocks"][-2]["text"]["text"]
     assert "외국인 매수 우위가 지수 방어에 기여했습니다." in review_block_text
     assert "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다." in review_block_text
+
+
+def test_run_mode_shows_fallback_notice_when_reviewer_fails() -> None:
+    collector = FakeCollector(make_payload())
+    slack = FakeSlack()
+    reviewer = FakeReviewer(
+        ReviewResult(
+            points=[],
+            fallback_notice="추론이 실패해서 규칙기반으로 나온 리뷰입니다.",
+        )
+    )
+
+    sent = run_mode(
+        mode="open",
+        now=datetime(2026, 5, 12, 9, 10, tzinfo=KST),
+        collector=collector,
+        slack=slack,
+        reviewer=reviewer,
+    )
+
+    assert sent is True
+    review_block_text = slack.messages[0]["blocks"][-2]["text"]["text"]
+    assert "추론이 실패해서 규칙기반으로 나온 리뷰입니다." in review_block_text
+    assert "개인 저가매수와 기관·외국인 차익실현이 충돌하는 구간입니다." in review_block_text
