@@ -1,0 +1,3 @@
+10 9 * * 1-5 /Users/osori/workbench/stock-tracker/scripts/run_briefing.sh open # stock-tracker-open
+0 12 * * 1-5 /Users/osori/workbench/stock-tracker/scripts/run_briefing.sh noon # stock-tracker-noon
+40 15 * * 1-5 /Users/osori/workbench/stock-tracker/scripts/run_briefing.sh close # stock-tracker-close
