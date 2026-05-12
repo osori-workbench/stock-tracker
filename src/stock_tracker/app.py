@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from stock_tracker.calendar import KST, is_market_session_open
 from stock_tracker.models import BriefingData
 from stock_tracker.naver import NaverClient
-from stock_tracker.reporting import build_briefing_text
+from stock_tracker.reporting import build_briefing_payload
 from stock_tracker.slack import SlackWebhookClient
 
 MODE_LABELS = {
@@ -58,6 +58,6 @@ def run_mode(
         raise ValueError('collector and slack must be provided')
 
     briefing = collector.collect(mode, current)
-    text = build_briefing_text(briefing)
-    slack.send(text)
+    payload = build_briefing_payload(briefing)
+    slack.send(payload)
     return True

@@ -20,10 +20,10 @@ class FakeCollector:
 
 class FakeSlack:
     def __init__(self) -> None:
-        self.messages: list[str] = []
+        self.messages: list[dict] = []
 
-    def send(self, text: str) -> None:
-        self.messages.append(text)
+    def send(self, payload: dict) -> None:
+        self.messages.append(payload)
 
 
 def make_payload() -> BriefingData:
@@ -81,4 +81,5 @@ def test_run_mode_sends_message_when_market_open() -> None:
     assert sent is True
     assert len(collector.calls) == 1
     assert len(slack.messages) == 1
-    assert "국장 오픈 10분" in slack.messages[0]
+    assert "국장 오픈 10분" in slack.messages[0]["text"]
+    assert slack.messages[0]["blocks"][0]["type"] == "header"
