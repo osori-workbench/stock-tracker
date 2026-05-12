@@ -26,6 +26,16 @@ class FakeSlack:
         self.messages.append(payload)
 
 
+class FakeReviewer:
+    def __init__(self, review_points: list[str]) -> None:
+        self.review_points = review_points
+        self.calls: list[BriefingData] = []
+
+    def generate(self, data: BriefingData) -> list[str]:
+        self.calls.append(data)
+        return self.review_points
+
+
 def make_payload() -> BriefingData:
     return BriefingData(
         mode="open",
@@ -84,3 +94,26 @@ def test_run_mode_sends_message_when_market_open() -> None:
     assert len(slack.messages) == 1
     assert "국장 오픈 10분" in slack.messages[0]["text"]
     assert slack.messages[0]["blocks"][0]["type"] == "header"
+
+
+def test_run_mode_uses_reviewer_output_when_provided() -> None:
+    collector = FakeCollector(make_payload())
+    slack = FakeSlack()
+    reviewer = FakeReviewer([
+        "외국인 매수 우위가 지수 방어에 기여했습니다.",
+        "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다.",
+    ])
+
+    sent = run_mode(
+        mode="open",
+        now=datetime(2026, 5, 12, 9, 10, tzinfo=KST),
+        collector=collector,
+        slack=slack,
+        reviewer=reviewer,
+    )
+
+    assert sent is True
+    assert len(reviewer.calls) == 1
+    review_block_text = slack.messages[0]["blocks"][-2]["text"]["text"]
+    assert "외국인 매수 우위가 지수 방어에 기여했습니다." in review_block_text
+    assert "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다." in review_block_text

@@ -16,20 +16,40 @@
 ## 로컬 실행
 ```bash
 cp .env.example .env
-# .env 에 Slack webhook URL 입력
-chmod +x scripts/run_briefing.sh
+# .env 에 Slack webhook URL, OpenAI API key 입력
+chmod +x scripts/run_briefing.sh scripts/install_launchd.sh scripts/uninstall_launchd.sh
 uv sync --group dev
 uv run stock-tracker open
 uv run stock-tracker noon
 uv run stock-tracker close
 ```
 
+`OPENAI_API_KEY`가 있으면 마지막 *종합 리뷰*는 GPT 자유서술로 생성되고,
+없으면 기존 규칙 기반 리뷰로 자동 fallback 됩니다.
+
 ## 테스트
 ```bash
 uv run --group dev pytest -q
 ```
 
-## cron 등록
+## launchd 등록 (권장)
+macOS에서는 `launchd`가 `cron`보다 정시성이 좋고, Hermes 세션의 `crontab` hang도 피할 수 있습니다.
+
+```bash
+chmod +x scripts/run_briefing.sh scripts/install_launchd.sh scripts/uninstall_launchd.sh
+./scripts/install_launchd.sh
+launchctl print gui/$(id -u)/com.osori.stock-tracker.open | head -40
+```
+
+제거:
+
+```bash
+./scripts/uninstall_launchd.sh
+```
+
+로그는 `logs/cron.log` 와 `logs/launchd-*.log` 에 쌓입니다.
+
+## cron 등록 (보조 옵션)
 Hermes 터미널에서는 `crontab` 등록이 macOS에서 멈출 수 있어, 설치 스크립트를 함께 제공합니다.
 
 ```bash

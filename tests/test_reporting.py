@@ -87,3 +87,23 @@ def test_build_briefing_payload_includes_exchange_rate_in_overview() -> None:
 
     assert "*환율*" in blocks_text
     assert "<https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW|USD/KRW> 1,488.70원 (상승 13.70)" in blocks_text
+
+
+def test_build_briefing_payload_prefers_llm_review_points_when_provided() -> None:
+    payload = build_briefing_payload(
+        make_data(),
+        review_points=[
+            "외국인 중심 수급이 지수를 버티게 했습니다.",
+            "환율 상승 부담은 남아 있어도 투매 해석까지는 아닙니다.",
+        ],
+    )
+    blocks_text = "\n".join(
+        item["text"]
+        for block in payload["blocks"]
+        for item in block.get("fields", []) + ([block["text"]] if "text" in block else [])
+        if isinstance(item, dict) and item.get("type") == "mrkdwn"
+    )
+
+    assert "외국인 중심 수급이 지수를 버티게 했습니다." in blocks_text
+    assert "환율 상승 부담은 남아 있어도 투매 해석까지는 아닙니다." in blocks_text
+    assert "외국인·기관이 함께 매도하고 개인만 크게 받아낸 날" not in blocks_text

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from stock_tracker.calendar import KST, is_market_session_open
@@ -15,6 +16,10 @@ MODE_LABELS = {
     "noon": "개장 중",
     "close": "마감 후",
 }
+
+
+class ReviewGenerator(Protocol):
+    def generate(self, data: BriefingData) -> list[str]: ...
 
 
 @dataclass(slots=True)
@@ -48,6 +53,7 @@ def run_mode(
     now: datetime | None = None,
     collector: Collector | None = None,
     slack: SlackWebhookClient | None = None,
+    reviewer: ReviewGenerator | None = None,
 ) -> bool:
     current = now or datetime.now(tz=KST)
     if current.tzinfo is None:
@@ -59,6 +65,7 @@ def run_mode(
         raise ValueError('collector and slack must be provided')
 
     briefing = collector.collect(mode, current)
-    payload = build_briefing_payload(briefing)
+    review_points = reviewer.generate(briefing) if reviewer is not None else None
+    payload = build_briefing_payload(briefing, review_points=review_points)
     slack.send(payload)
     return True
