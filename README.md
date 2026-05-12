@@ -24,8 +24,8 @@ uv run stock-tracker noon
 uv run stock-tracker close
 ```
 
-기본적으로 마지막 *종합 리뷰*는 Codex CLI 자유서술 추론으로 생성됩니다.
-Codex 실행이 실패하면 규칙 기반 리뷰로 자동 fallback 되고,
+기본적으로 마지막 *종합 리뷰*는 Hermes one-shot 추론으로 생성됩니다.
+Hermes 추론 호출이 실패하면 규칙 기반 리뷰로 자동 fallback 되고,
 메시지 안에 `추론이 실패해서 규칙기반으로 나온 리뷰입니다.` 안내가 표시됩니다.
 
 ## 테스트

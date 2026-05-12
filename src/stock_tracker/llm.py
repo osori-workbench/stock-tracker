@@ -5,11 +5,11 @@ import shutil
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
 from stock_tracker.models import BriefingData
 
-DEFAULT_CODEX_MODEL = "gpt-5-codex"
+DEFAULT_HERMES_MODEL = "gpt-5.4"
 DEFAULT_FALLBACK_NOTICE = "추론이 실패해서 규칙기반으로 나온 리뷰입니다."
 SYSTEM_PROMPT = """당신은 한국 주식시장 브리핑 애널리스트입니다.
 숫자를 반복하지 말고, 주어진 데이터만 근거로 시장을 해석하세요.
@@ -20,9 +20,10 @@ SYSTEM_PROMPT = """당신은 한국 주식시장 브리핑 애널리스트입니
 수급, 지수 방향, 환율, 거래 상위 종목의 성격을 연결해 해석하세요.
 마지막 줄은 가능하면 오늘 장세의 핵심 결론이나 체크포인트를 담으세요.
 """
-DEFAULT_CODEX_BIN_CANDIDATES = [
-    "/Applications/Codex.app/Contents/Resources/codex",
-    shutil.which("codex") or "codex",
+DEFAULT_HERMES_BIN_CANDIDATES = [
+    shutil.which("hermes"),
+    str(Path.home() / ".local" / "bin" / "hermes"),
+    "hermes",
 ]
 
 
@@ -37,7 +38,6 @@ class Runner(Protocol):
         self,
         command: list[str],
         *,
-        input: str,
         text: bool,
         capture_output: bool,
         timeout: int,
@@ -45,31 +45,32 @@ class Runner(Protocol):
     ) -> subprocess.CompletedProcess[str]: ...
 
 
-class CodexCliReviewGenerator:
+class HermesCliReviewGenerator:
     def __init__(
         self,
-        codex_bin: str | None = None,
+        hermes_bin: str | None = None,
         runner: Runner | None = None,
-        model: str = DEFAULT_CODEX_MODEL,
-        timeout: int = 90,
+        model: str = DEFAULT_HERMES_MODEL,
+        timeout: int = 120,
     ) -> None:
-        self.codex_bin = codex_bin or self._resolve_codex_bin()
+        self.hermes_bin = hermes_bin or self._resolve_hermes_bin()
         self.runner = runner or subprocess.run
         self.model = model
         self.timeout = timeout
 
     def generate(self, data: BriefingData) -> ReviewResult:
+        prompt = self._build_full_prompt(data)
         try:
             completed = self.runner(
                 [
-                    self.codex_bin,
-                    "exec",
-                    "--skip-git-repo-check",
+                    self.hermes_bin,
+                    "chat",
+                    "-q",
+                    prompt,
+                    "--quiet",
                     "-m",
                     self.model,
-                    "-",
                 ],
-                input=self._build_full_prompt(data),
                 text=True,
                 capture_output=True,
                 timeout=self.timeout,
@@ -87,11 +88,11 @@ class CodexCliReviewGenerator:
         return ReviewResult(points=points, fallback_notice=None)
 
     @staticmethod
-    def _resolve_codex_bin() -> str:
-        for candidate in DEFAULT_CODEX_BIN_CANDIDATES:
+    def _resolve_hermes_bin() -> str:
+        for candidate in DEFAULT_HERMES_BIN_CANDIDATES:
             if candidate and Path(candidate).exists():
                 return candidate
-        return "codex"
+        return "hermes"
 
     def _build_full_prompt(self, data: BriefingData) -> str:
         return SYSTEM_PROMPT + "\n\n" + build_user_prompt(data)
@@ -120,7 +121,7 @@ def parse_review_lines(content: str) -> list[str]:
     lines = []
     for raw in content.splitlines():
         line = raw.strip()
-        if not line:
+        if not line or line.startswith("session_id:"):
             continue
         for prefix in ("- ", "• ", "* "):
             if line.startswith(prefix):
