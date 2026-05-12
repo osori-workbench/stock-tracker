@@ -1,0 +1,76 @@
+name: Stock Briefing
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Briefing mode to run
+        required: true
+        default: close
+        type: choice
+        options:
+          - open
+          - noon
+          - close
+  schedule:
+    - cron: "10 0 * * 1-5"
+    - cron: "0 3 * * 1-5"
+    - cron: "40 6 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-briefing
+  cancel-in-progress: false
+
+jobs:
+  run-briefing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: Asia/Seoul
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Resolve briefing mode
+        id: resolve_mode
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            MODE="${{ inputs.mode }}"
+          else
+            case "${{ github.event.schedule }}" in
+              "10 0 * * 1-5") MODE="open" ;;
+              "0 3 * * 1-5") MODE="noon" ;;
+              "40 6 * * 1-5") MODE="close" ;;
+              *)
+                echo "Unknown schedule: ${{ github.event.schedule }}" >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Resolved briefing mode: $MODE"
+
+      - name: Run stock briefing
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run stock-tracker "${{ steps.resolve_mode.outputs.mode }}"
