@@ -30,9 +30,11 @@ uv run --group dev pytest -q
 ```
 
 ## cron 등록
+Hermes 터미널에서는 `crontab` 등록이 macOS에서 멈출 수 있어, 설치 스크립트를 함께 제공합니다.
+
 ```bash
-chmod +x scripts/run_briefing.sh
-crontab /Users/osori/workbench/stock-tracker/deploy/stock-tracker.crontab
+chmod +x scripts/run_briefing.sh scripts/install_cron.sh
+./scripts/install_cron.sh
 crontab -l
 ```
 
