@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from stock_tracker.app import run_mode
-from stock_tracker.models import BriefingData, IndexSnapshot, InvestorSnapshot
+from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -32,6 +32,7 @@ def make_payload() -> BriefingData:
         now=datetime(2026, 5, 12, 9, 10, tzinfo=KST),
         market_label="개장 직후",
         indices=[IndexSnapshot(name="KOSPI", value=2600.0, change_value=5.0, change_percent=0.19)],
+        exchange_rate=ExchangeRateSnapshot(name="USD/KRW", value=1400.5, change_value=4.2, direction="상승", source="하나은행"),
         investors=InvestorSnapshot(
             basis_label="09:10",
             individual=1200,

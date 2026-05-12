@@ -31,6 +31,7 @@ class Collector:
                 self.client.fetch_index("KOSPI"),
                 self.client.fetch_index("KOSDAQ"),
             ],
+            exchange_rate=self.client.fetch_exchange_rate(),
             investors=self.client.fetch_investors(now.date(), intraday=intraday),
             leaders=self.client.fetch_top_volume(limit=5),
             notes=["장중 수치는 잠정치일 수 있습니다."] if intraday else [],

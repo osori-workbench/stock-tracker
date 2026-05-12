@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
 
-from stock_tracker.models import IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 
 POLLING_URL = "https://polling.finance.naver.com/api/realtime"
 NAVER_BASE = "https://finance.naver.com"
@@ -35,6 +33,11 @@ class NaverClient:
             change_percent=float(payload["cr"]),
         )
 
+    def fetch_exchange_rate(self) -> ExchangeRateSnapshot:
+        response = self.session.get(f"{NAVER_BASE}/marketindex/", timeout=20)
+        response.raise_for_status()
+        return parse_exchange_rate(response.text)
+
     def fetch_investors(self, target_date: date, intraday: bool) -> InvestorSnapshot:
         path = "investorDealTrendTime.naver" if intraday else "investorDealTrendDay.naver"
         response = self.session.get(
@@ -60,6 +63,29 @@ def _to_int(text: str) -> int:
 
 def _to_float(text: str) -> float:
     return float(text.replace(',', '').replace('%', '').strip())
+
+
+def parse_exchange_rate(html: str) -> ExchangeRateSnapshot:
+    soup = BeautifulSoup(html, 'html.parser')
+    usd = soup.select_one('#exchangeList li.on')
+    if usd is None:
+        raise ValueError('USD/KRW exchange rate row not found')
+
+    label = usd.select_one('h3 .blind')
+    value = usd.select_one('span.value')
+    change = usd.select_one('span.change')
+    direction = usd.select('div.head_info span.blind')[-1] if usd.select('div.head_info span.blind') else None
+    source = usd.select_one('.graph_info .source')
+    if not all([label, value, change, direction, source]):
+        raise ValueError('Incomplete USD/KRW exchange rate row')
+
+    return ExchangeRateSnapshot(
+        name='USD/KRW',
+        value=_to_float(value.get_text(strip=True)),
+        change_value=_to_float(change.get_text(strip=True)),
+        direction=direction.get_text(strip=True),
+        source=source.get_text(' ', strip=True).replace(' 기준', ''),
+    )
 
 
 def parse_investor_rows(html: str) -> InvestorSnapshot:

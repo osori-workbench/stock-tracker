@@ -13,6 +13,15 @@ class IndexSnapshot:
 
 
 @dataclass(slots=True)
+class ExchangeRateSnapshot:
+    name: str
+    value: float
+    change_value: float
+    direction: str
+    source: str
+
+
+@dataclass(slots=True)
 class InvestorSnapshot:
     basis_label: str
     individual: int
@@ -41,6 +50,7 @@ class BriefingData:
     now: datetime
     market_label: str
     indices: list[IndexSnapshot]
+    exchange_rate: ExchangeRateSnapshot | None
     investors: InvestorSnapshot
     leaders: list[TopStock] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)

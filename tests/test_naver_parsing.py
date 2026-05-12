@@ -1,4 +1,5 @@
-from stock_tracker.naver import parse_investor_rows, parse_top_volume_rows
+from stock_tracker.models import ExchangeRateSnapshot
+from stock_tracker.naver import parse_exchange_rate, parse_investor_rows, parse_top_volume_rows
 
 
 INVESTOR_HTML = """
@@ -27,6 +28,23 @@ TOP_VOLUME_HTML = """
 </table>
 """
 
+EXCHANGE_HTML = """
+<ul id=\"exchangeList\">
+  <li class=\"on\">
+    <a class=\"head usd\" href=\"/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW\">
+      <h3 class=\"h_lst\"><span class=\"blind\">미국 USD</span></h3>
+      <div class=\"head_info point_up\">
+        <span class=\"value\">1,488.70</span>
+        <span class=\"txt_krw\"><span class=\"blind\">원</span></span>
+        <span class=\"change\">13.70</span>
+        <span class=\"blind\">상승</span>
+      </div>
+    </a>
+    <div class=\"graph_info\"><span class=\"source\">하나은행 기준</span></div>
+  </li>
+</ul>
+"""
+
 
 def test_parse_investor_rows_returns_most_recent_snapshot() -> None:
     row = parse_investor_rows(INVESTOR_HTML)
@@ -43,3 +61,15 @@ def test_parse_top_volume_rows_returns_stock_rows() -> None:
     assert [row.code for row in rows] == ["005930", "000660"]
     assert rows[0].name == "삼성전자"
     assert rows[1].change_percent == 2.10
+
+
+def test_parse_exchange_rate_returns_usdkrw_snapshot() -> None:
+    rate = parse_exchange_rate(EXCHANGE_HTML)
+
+    assert rate == ExchangeRateSnapshot(
+        name="USD/KRW",
+        value=1488.70,
+        change_value=13.70,
+        direction="상승",
+        source="하나은행",
+    )

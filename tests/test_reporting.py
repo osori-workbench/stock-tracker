@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from stock_tracker.models import BriefingData, IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 from stock_tracker.reporting import build_briefing_payload
 
 
@@ -17,6 +17,7 @@ def make_data() -> BriefingData:
             IndexSnapshot(name="KOSPI", value=7643.15, change_value=-179.09, change_percent=-2.29),
             IndexSnapshot(name="KOSDAQ", value=1179.29, change_value=-28.05, change_percent=-2.32),
         ],
+        exchange_rate=ExchangeRateSnapshot(name="USD/KRW", value=1488.70, change_value=13.70, direction="상승", source="하나은행"),
         investors=InvestorSnapshot(
             basis_label="15:58",
             individual=66821,
@@ -73,3 +74,16 @@ def test_build_briefing_payload_contains_interpretive_review_not_sources() -> No
     assert "인버스 ETF가 거래 상위" in blocks_text
     assert "단순 과열보다는 하락 방어·헤지 성격이 강합니다." in blocks_text
     assert "출처:" not in blocks_text
+
+
+def test_build_briefing_payload_includes_exchange_rate_in_overview() -> None:
+    payload = build_briefing_payload(make_data())
+    blocks_text = "\n".join(
+        item["text"]
+        for block in payload["blocks"]
+        for item in block.get("fields", []) + ([block["text"]] if "text" in block else [])
+        if isinstance(item, dict) and item.get("type") == "mrkdwn"
+    )
+
+    assert "*환율*" in blocks_text
+    assert "<https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW|USD/KRW> 1,488.70원 (상승 13.70)" in blocks_text

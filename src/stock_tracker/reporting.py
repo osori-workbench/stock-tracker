@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stock_tracker.models import BriefingData, IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 
 MODE_TITLES = {
     "open": "국장 오픈 10분",
@@ -10,6 +10,7 @@ MODE_TITLES = {
 
 NAVER_ITEM_URL = "https://finance.naver.com/item/main.naver?code={code}"
 NAVER_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver"
+NAVER_USD_KRW_URL = "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
 
 
 def format_eok_to_jo(value: int) -> str:
@@ -19,6 +20,10 @@ def format_eok_to_jo(value: int) -> str:
 
 def format_index_line(index: IndexSnapshot) -> str:
     return f"*{index.name}* {index.value:,.2f} ({index.change_percent:+.2f}%, {index.change_value:+,.2f})"
+
+
+def format_exchange_rate_line(rate: ExchangeRateSnapshot) -> str:
+    return f"<{NAVER_USD_KRW_URL}|{rate.name}> {rate.value:,.2f}원 ({rate.direction} {rate.change_value:.2f})"
 
 
 def build_stock_link(stock: TopStock) -> str:
@@ -75,15 +80,17 @@ def build_market_overview_block(data: BriefingData) -> dict:
     index_lines = "\n".join(
         f"• {format_index_line(index)}" for index in data.indices
     )
+    rate_line = format_exchange_rate_line(data.exchange_rate) if data.exchange_rate else "집계 실패"
     fields = [
         {"type": "mrkdwn", "text": f"*시장 상태*\n{data.market_label}"},
         {"type": "mrkdwn", "text": f"*수급*\n개인 {format_eok_to_jo(investor.individual)} / 외국인 {format_eok_to_jo(investor.foreign)} / 기관 {format_eok_to_jo(investor.institution)}"},
         {"type": "mrkdwn", "text": f"*지수*\n{index_lines}"},
+        {"type": "mrkdwn", "text": f"*환율*\n{rate_line}"},
         {"type": "mrkdwn", "text": f"*기관 세부*\n금융투자 {format_eok_to_jo(investor.financial_investment)}\n보험 {format_eok_to_jo(investor.insurance)}\n투신(사모) {format_eok_to_jo(investor.trust_private)}\n연기금 {format_eok_to_jo(investor.pension)}"},
     ]
     return {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*시장 한눈에 보기*\n<https://finance.naver.com/sise/sise_index.naver|네이버 증권 지수 페이지> 기준입니다."},
+        "text": {"type": "mrkdwn", "text": f"*시장 한눈에 보기*\n<{NAVER_INDEX_URL}|네이버 증권 지수 페이지> 기준입니다."},
         "fields": fields,
     }
 
