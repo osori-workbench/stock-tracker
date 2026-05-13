@@ -179,9 +179,18 @@ def _to_float(text: str) -> float:
 
 
 def parse_yahoo_chart_snapshot(payload: dict, label: str) -> IndexSnapshot:
-    result = payload["chart"]["result"][0]["meta"]
-    current = float(result["regularMarketPrice"])
-    previous = float(result["chartPreviousClose"])
+    result = payload["chart"]["result"][0]
+    meta = result["meta"]
+    closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+    valid_closes = [float(close) for close in closes if close is not None]
+
+    if len(valid_closes) >= 2:
+        previous = valid_closes[-2]
+        current = valid_closes[-1]
+    else:
+        current = float(meta["regularMarketPrice"])
+        previous = float(meta["chartPreviousClose"])
+
     change_value = current - previous
     change_percent = (change_value / previous) * 100 if previous else 0.0
     return IndexSnapshot(

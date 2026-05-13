@@ -2,6 +2,9 @@ from stock_tracker.slack import SlackWebhookClient
 
 
 class DummyResponse:
+    status_code = 200
+    text = "ok"
+
     def raise_for_status(self) -> None:
         return None
 

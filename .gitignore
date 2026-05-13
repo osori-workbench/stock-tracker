@@ -12,3 +12,4 @@ wheels/
 # Local configuration
 .env
 logs/
+debug/

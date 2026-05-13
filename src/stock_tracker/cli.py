@@ -36,3 +36,7 @@ def main() -> None:
     sent = run_mode(args.mode, now=now, collector=collector, slack=slack, reviewer=reviewer)
     if not sent:
         print('시장 휴장일이라 브리핑을 보내지 않았습니다.')
+
+
+if __name__ == '__main__':
+    main()
