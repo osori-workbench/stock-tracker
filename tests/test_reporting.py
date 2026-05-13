@@ -90,8 +90,8 @@ def test_build_briefing_payload_uses_blocks_and_links() -> None:
     assert "*시장 한눈에 보기*" in blocks_text
     assert "*종합 리뷰*" in blocks_text
     assert "*거래 상위 관심종목*" in blocks_text
-    assert "<https://finance.naver.com/item/main.naver?code=252670|KODEX 200선물인버스2X>" in blocks_text
-    assert "• <https://finance.naver.com/item/main.naver?code=003280|흥아해운>" in blocks_text
+    assert "<https://stock.naver.com/domestic/stock/252670/price|KODEX 200선물인버스2X>" in blocks_text
+    assert "• <https://stock.naver.com/domestic/stock/003280/price|흥아해운>" in blocks_text
 
 
 def test_build_briefing_payload_contains_interpretive_review_not_sources() -> None:
@@ -119,7 +119,28 @@ def test_build_briefing_payload_includes_exchange_rate_in_overview() -> None:
     )
 
     assert "*환율*" in blocks_text
-    assert "<https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW|USD/KRW> 1,488.70원 (상승 13.70)" in blocks_text
+    assert "<https://stock.naver.com/marketindex/exchange/FX_USDKRW/price|USD/KRW> 1,488.70원 (상승 13.70)" in blocks_text
+
+
+def test_build_briefing_payload_omits_investor_detail_block_when_detail_data_missing() -> None:
+    data = make_data()
+    data.investors.financial_investment = 0
+    data.investors.insurance = 0
+    data.investors.trust_private = 0
+    data.investors.bank = 0
+    data.investors.other_financial = 0
+    data.investors.pension = 0
+    data.investors.other_corporation = 0
+
+    payload = build_briefing_payload(data)
+    blocks_text = "\n".join(
+        item["text"]
+        for block in payload["blocks"]
+        for item in block.get("fields", []) + ([block["text"]] if "text" in block else [])
+        if isinstance(item, dict) and item.get("type") == "mrkdwn"
+    )
+
+    assert "*기관 세부*" not in blocks_text
 
 
 def test_build_briefing_payload_prefers_llm_review_points_when_provided() -> None:

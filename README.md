@@ -1,6 +1,6 @@
 # stock-tracker
 
-네이버 증권과 Yahoo/Google News 데이터를 조합해 한국 주식시장 브리핑을 Slack webhook으로 보내는 자동화 프로젝트입니다.
+네이버 증권 `stock.naver.com` API/페이지와 Google News RSS를 조합해 한국 주식시장 브리핑을 Slack webhook으로 보내는 자동화 프로젝트입니다.
 주요 목적은 **장전 / 개장 직후 / 장중 / 마감 후**에 읽기 쉬운 Slack Block Kit 브리핑을 보내는 것입니다.
 
 ## 브리핑 스케줄
@@ -12,76 +12,97 @@
 
 ## 현재 사용 중인 데이터 소스 / API / 페이지
 
-### 1) 국내 지수: Naver Finance polling API
+### 1) 국내 지수: stock.naver.com index basic API
 - 목적: KOSPI / KOSDAQ 지수
 - 엔드포인트:
-  - `https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI`
-  - `https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSDAQ`
+  - `https://stock.naver.com/api/securityFe/api/index/KOSPI/basic`
+  - `https://stock.naver.com/api/securityFe/api/index/KOSDAQ/basic`
 - 코드 위치: `src/stock_tracker/naver.py::fetch_index()`
 - 사용 필드:
-  - `cd`: 지수명
-  - `nv`: 현재값 (`/100` 스케일 보정)
-  - `cv`: 전일 대비 (`/100` 스케일 보정)
-  - `cr`: 등락률
+  - `closePrice`
+  - `compareToPreviousClosePrice`
+  - `compareToPreviousPrice`
+  - `fluctuationsRatio`
 
-### 2) 환율: Naver Finance marketindex HTML
+### 2) 환율: stock.naver.com marketindex majors RPC
 - 목적: USD/KRW 환율
-- 페이지:
-  - `https://finance.naver.com/marketindex/`
+- 엔드포인트:
+  - `https://stock.naver.com/api/securityService/marketindex/majors/rpc`
 - 코드 위치: `src/stock_tracker/naver.py::fetch_exchange_rate()`
-- 주요 selector:
-  - `#exchangeList li.on`
-  - `span.value`
-  - `span.change`
-  - `div.head_info span.blind`
-  - `.graph_info .source`
-- Slack 링크에 사용하는 상세 페이지:
-  - `https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW`
+- 선택 기준:
+  - `reutersCode == "FX_USDKRW"`
+- 사용 필드:
+  - `calcPrice`
+  - `fluctuations`
+  - `fluctuationsType.text`
+  - `stockExchangeType.nameKor`
+- Slack 링크:
+  - `https://stock.naver.com/marketindex/exchange/FX_USDKRW/price`
 
-### 3) 투자자 수급: Naver Finance 투자자별 매매동향 HTML
+### 3) 투자자 수급: stock.naver.com index integration API
 - 목적: 외국인/기관/개인 수급
-- 페이지:
-  - 장중: `https://finance.naver.com/sise/investorDealTrendTime.naver?bizdate=YYYYMMDD`
-  - 마감: `https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=YYYYMMDD`
+- 엔드포인트:
+  - `https://stock.naver.com/api/securityFe/api/index/KOSPI/integration`
 - 코드 위치: `src/stock_tracker/naver.py::fetch_investors()`
-- 주의:
-  - `bizdate` 없이 호출하면 빈 표가 나올 수 있습니다.
-  - `open`/`noon` 모드는 intraday 페이지, `close` 모드는 daily 페이지를 사용합니다.
+- 사용 필드:
+  - `dealTrendInfo.bizdate`
+  - `dealTrendInfo.personalValue`
+  - `dealTrendInfo.foreignValue`
+  - `dealTrendInfo.institutionalValue`
+- 현재 제한:
+  - 구형 `finance.naver.com` 투자자별 매매동향 표에 있던 기관 세부 항목(금융투자/보험/투신/연기금 등)은
+    신형 API에서 바로 주지 않아 현재는 `0`으로 채웁니다.
+  - 따라서 Slack 메시지에서도 세부 값이 없으면 `기관 세부` 블록을 숨깁니다.
 
-### 4) 거래량 상위: Naver Finance 거래량 페이지
+### 4) 거래량 상위: stock.naver.com domestic market stock API
 - 목적: 장중/종가 기준 거래 상위 관심 종목
-- 페이지:
-  - `https://finance.naver.com/sise/sise_quant.naver`
+- 엔드포인트:
+  - `https://stock.naver.com/api/domestic/market/stock/default?tradeType=KRX&marketType=ALL&orderType=quantTop&startIdx=0&pageSize=10`
 - 코드 위치: `src/stock_tracker/naver.py::fetch_top_volume()`
-- 파싱 포인트:
-  - `table.type_2`
-  - `a.tltle`
-  - 종목 링크의 `code=` 파라미터
+- 사용 필드:
+  - `itemcode`
+  - `itemname`
+  - `nowPrice`
+  - `prevChangeRate`
+- Slack 종목 링크:
+  - `https://stock.naver.com/domestic/stock/{code}/price`
 
-### 5) 해외 지수 / 금리 / 달러 / 원유: Yahoo Finance chart API
-- 목적: 장전 브리핑용 밤사이 미국장 및 거시 기준선
-- 기본 엔드포인트 패턴:
-  - `https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=5d`
+### 5) 해외 지수: stock.naver.com worldstock polling API
+- 목적: 장전 브리핑용 밤사이 미국장 기준선
+- 엔드포인트:
+  - `https://stock.naver.com/api/polling/worldstock/index?reutersCodes=.INX,.IXIC,.SOX`
+- 코드 위치: `src/stock_tracker/naver.py::fetch_global_markets()`
 - 실제 사용 심볼:
-  - `^GSPC` → S&P 500
-  - `^IXIC` → NASDAQ
-  - `^SOX` → SOX
-  - `^TNX` → 미국 10년물
-  - `DX-Y.NYB` → 달러인덱스
-  - `CL=F` → WTI
-  - `BZ=F` → 브렌트
+  - `.INX` → S&P 500
+  - `.IXIC` → NASDAQ
+  - `.SOX` → SOX
+- 사용 필드:
+  - `closePrice`
+  - `compareToPreviousClosePrice`
+  - `fluctuationsRatio`
+  - `marketStatus`
+  - `localTradedAt`
+
+### 6) 미국 10년물 / 달러인덱스 / 원유: stock.naver.com marketindex API
+- 목적: 장전 브리핑용 거시 기준선
+- 엔드포인트:
+  - 미국 10년물: `https://stock.naver.com/api/securityService/marketindex/majors/bond`
+  - 달러인덱스/원달러: `https://stock.naver.com/api/securityService/marketindex/majors/rpc`
+  - 원유: `https://stock.naver.com/api/securityService/marketindex/energy`
 - 코드 위치:
   - `src/stock_tracker/naver.py::fetch_global_markets()`
   - `src/stock_tracker/naver.py::fetch_oil_markets()`
-  - `src/stock_tracker/naver.py::parse_yahoo_chart_snapshot()`
-- **중요한 현재 기준**:
-  - 장전 브리핑에서는 `meta.chartPreviousClose`를 직접 신뢰하지 않습니다.
-  - Yahoo 응답의 `indicators.quote[0].close` 배열에서 `null`을 제거한 뒤,
-    **가장 최근 2개의 확정 종가**를 `(전일 종가, 당일 종가)`로 사용합니다.
-  - 따라서 오전 8시 장전 브리핑은 사실상 **미국장 오전 6시 종가 기준**으로 계산됩니다.
-  - close 히스토리가 비어 있을 때만 예외적으로 `regularMarketPrice` / `chartPreviousClose`로 fallback 합니다.
+- 선택 기준:
+  - 미국 10년물: `reutersCode == "US10YT=RR"`
+  - 달러인덱스: `reutersCode == ".DXY"`
+  - WTI: `reutersCode == "CLcv1"`
+  - 브렌트: `reutersCode == "LCOcv1"`
+- 중요한 점:
+  - 장전 브리핑은 이제 Yahoo 보정 로직 대신,
+    **stock.naver.com 이 제공하는 직전 미국장 종가/전일 대비 값**을 직접 사용합니다.
+  - 따라서 오전 8시 브리핑은 구형 Naver/별도 Yahoo 보정 대신 신형 Naver 증권 기준선으로 계산됩니다.
 
-### 6) 해외/원유 뉴스: Google News RSS
+### 7) 해외/원유 뉴스: Google News RSS
 - 목적: 장전 브리핑용 핵심 헤드라인
 - 엔드포인트:
   - `https://news.google.com/rss/search`
@@ -96,12 +117,12 @@
 - 후처리:
   - include / exclude keyword 필터를 적용해 잡음을 줄입니다.
 
-### 7) 휴장일 판정: exchange_calendars
+### 8) 휴장일 판정: exchange_calendars
 - 목적: 주말/휴장일 발송 방지
 - 코드 위치: `src/stock_tracker/calendar.py`
 - 사용 캘린더: `XKRX`
 
-### 8) 전송 대상: Slack Incoming Webhook
+### 9) 전송 대상: Slack Incoming Webhook
 - 목적: 브리핑 전송
 - 환경변수:
   - `SLACK_WEBHOOK_URL`

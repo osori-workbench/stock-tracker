@@ -9,9 +9,9 @@ MODE_TITLES = {
     "close": "국장 마감 리뷰",
 }
 
-NAVER_ITEM_URL = "https://finance.naver.com/item/main.naver?code={code}"
-NAVER_INDEX_URL = "https://finance.naver.com/sise/sise_index.naver"
-NAVER_USD_KRW_URL = "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW"
+NAVER_ITEM_URL = "https://stock.naver.com/domestic/stock/{code}/price"
+NAVER_INDEX_URL = "https://stock.naver.com/market/stock/kr"
+NAVER_USD_KRW_URL = "https://stock.naver.com/marketindex/exchange/FX_USDKRW/price"
 
 
 def format_eok_to_jo(value: int) -> str:
@@ -29,6 +29,21 @@ def format_exchange_rate_line(rate: ExchangeRateSnapshot) -> str:
 
 def build_stock_link(stock: TopStock) -> str:
     return f"<{NAVER_ITEM_URL.format(code=stock.code)}|{stock.name}>"
+
+
+def has_investor_detail(investor: InvestorSnapshot) -> bool:
+    return any(
+        value != 0
+        for value in [
+            investor.financial_investment,
+            investor.insurance,
+            investor.trust_private,
+            investor.bank,
+            investor.other_financial,
+            investor.pension,
+            investor.other_corporation,
+        ]
+    )
 
 
 def build_summary_text(data: BriefingData) -> str:
@@ -131,8 +146,11 @@ def build_market_overview_block(data: BriefingData) -> dict:
         {"type": "mrkdwn", "text": f"*수급*\n개인 {format_eok_to_jo(investor.individual)} / 외국인 {format_eok_to_jo(investor.foreign)} / 기관 {format_eok_to_jo(investor.institution)}"},
         {"type": "mrkdwn", "text": f"*지수*\n{index_lines}"},
         {"type": "mrkdwn", "text": f"*환율*\n{rate_line}"},
-        {"type": "mrkdwn", "text": f"*기관 세부*\n금융투자 {format_eok_to_jo(investor.financial_investment)}\n보험 {format_eok_to_jo(investor.insurance)}\n투신(사모) {format_eok_to_jo(investor.trust_private)}\n연기금 {format_eok_to_jo(investor.pension)}"},
     ]
+    if has_investor_detail(investor):
+        fields.append(
+            {"type": "mrkdwn", "text": f"*기관 세부*\n금융투자 {format_eok_to_jo(investor.financial_investment)}\n보험 {format_eok_to_jo(investor.insurance)}\n투신(사모) {format_eok_to_jo(investor.trust_private)}\n연기금 {format_eok_to_jo(investor.pension)}"}
+        )
     return {
         "type": "section",
         "text": {"type": "mrkdwn", "text": f"*시장 한눈에 보기*\n<{NAVER_INDEX_URL}|네이버 증권 지수 페이지> 기준입니다."},

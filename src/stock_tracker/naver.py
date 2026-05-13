@@ -9,20 +9,23 @@ from bs4 import BeautifulSoup
 
 from stock_tracker.models import ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 
-POLLING_URL = "https://polling.finance.naver.com/api/realtime"
-NAVER_BASE = "https://finance.naver.com"
-YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+STOCK_NAVER_BASE = "https://stock.naver.com"
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
-GLOBAL_MARKET_SPECS = [
-    ("%5EGSPC", "S&P 500"),
-    ("%5EIXIC", "NASDAQ"),
-    ("%5ESOX", "SOX"),
-    ("%5ETNX", "미국 10년물"),
-    ("DX-Y.NYB", "달러인덱스"),
+DOMESTIC_INDEX_BASIC_URL = f"{STOCK_NAVER_BASE}/api/securityFe/api/index/{{code}}/basic"
+DOMESTIC_TOP_STOCKS_URL = f"{STOCK_NAVER_BASE}/api/domestic/market/stock/default"
+DOMESTIC_INDEX_INTEGRATION_URL = f"{STOCK_NAVER_BASE}/api/securityFe/api/index/{{code}}/integration"
+WORLD_INDEX_POLLING_URL = f"{STOCK_NAVER_BASE}/api/polling/worldstock/index"
+MARKETINDEX_MAJORS_RPC_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/majors/rpc"
+MARKETINDEX_MAJORS_BOND_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/majors/bond"
+MARKETINDEX_ENERGY_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/energy"
+GLOBAL_MARKET_CODES = [
+    (".INX", "S&P 500"),
+    (".IXIC", "NASDAQ"),
+    (".SOX", "SOX"),
 ]
-OIL_MARKET_SPECS = [
-    ("CL%3DF", "WTI"),
-    ("BZ%3DF", "브렌트"),
+OIL_MARKET_CODES = [
+    ("CLcv1", "WTI"),
+    ("LCOcv1", "브렌트"),
 ]
 GLOBAL_NEWS_QUERY = 'when:1d (Nasdaq OR "S&P 500" OR semiconductors OR "Treasury yields" OR "Federal Reserve" OR inflation OR dollar OR futures)'
 OIL_NEWS_QUERY = 'when:1d ("crude oil" OR OPEC OR WTI OR "Brent crude" OR gasoline OR inventory OR refinery)'
@@ -65,54 +68,79 @@ class NaverClient:
 
     def fetch_index(self, code: str) -> IndexSnapshot:
         response = self.session.get(
-            POLLING_URL,
-            params={"query": f"SERVICE_INDEX:{code}"},
-            headers={"Referer": f"{NAVER_BASE}/sise/sise_index.naver"},
+            DOMESTIC_INDEX_BASIC_URL.format(code=code),
             timeout=20,
         )
         response.raise_for_status()
-        payload = response.json()["result"]["areas"][0]["datas"][0]
-        return IndexSnapshot(
-            name=payload["cd"],
-            value=payload["nv"] / 100,
-            change_value=payload["cv"] / 100,
-            change_percent=float(payload["cr"]),
-        )
+        return parse_marketindex_quote(response.json(), code)
 
     def fetch_exchange_rate(self) -> ExchangeRateSnapshot:
-        response = self.session.get(f"{NAVER_BASE}/marketindex/", timeout=20)
+        response = self.session.get(MARKETINDEX_MAJORS_RPC_URL, timeout=20)
         response.raise_for_status()
-        return parse_exchange_rate(response.text)
+        for item in response.json():
+            if item.get("reutersCode") == "FX_USDKRW":
+                return parse_stock_exchange_rate(item)
+        raise ValueError("USD/KRW quote not found in stock.naver majors RPC")
 
     def fetch_investors(self, target_date: date, intraday: bool) -> InvestorSnapshot:
-        path = "investorDealTrendTime.naver" if intraday else "investorDealTrendDay.naver"
+        del target_date, intraday
+        response = self.session.get(DOMESTIC_INDEX_INTEGRATION_URL.format(code="KOSPI"), timeout=20)
+        response.raise_for_status()
+        return parse_stock_investor_snapshot(response.json())
+
+    def fetch_top_volume(self, limit: int = 5) -> list[TopStock]:
         response = self.session.get(
-            f"{NAVER_BASE}/sise/{path}",
-            params={"bizdate": target_date.strftime('%Y%m%d')},
+            DOMESTIC_TOP_STOCKS_URL,
+            params={
+                "tradeType": "KRX",
+                "marketType": "ALL",
+                "orderType": "quantTop",
+                "startIdx": 0,
+                "pageSize": limit,
+            },
             timeout=20,
         )
         response.raise_for_status()
-        return parse_investor_rows(response.text)
-
-    def fetch_top_volume(self, limit: int = 5) -> list[TopStock]:
-        response = self.session.get(f"{NAVER_BASE}/sise/sise_quant.naver", timeout=20)
-        response.raise_for_status()
-        return parse_top_volume_rows(response.text, limit=limit)
+        return [parse_domestic_top_stock(item) for item in response.json()[:limit]]
 
     def fetch_global_markets(self) -> list[IndexSnapshot]:
         snapshots: list[IndexSnapshot] = []
-        for symbol, label in GLOBAL_MARKET_SPECS:
-            snapshot = self._try_fetch_yahoo_snapshot(symbol, label)
-            if snapshot is not None:
-                snapshots.append(snapshot)
+        response = self.session.get(
+            WORLD_INDEX_POLLING_URL,
+            params=[("reutersCodes", ",".join(code for code, _ in GLOBAL_MARKET_CODES))],
+            timeout=20,
+        )
+        response.raise_for_status()
+        payloads = {item["reutersCode"]: item for item in response.json().get("datas", [])}
+        for code, label in GLOBAL_MARKET_CODES:
+            payload = payloads.get(code)
+            if payload is not None:
+                snapshots.append(parse_marketindex_quote(payload, label))
+
+        bond_response = self.session.get(MARKETINDEX_MAJORS_BOND_URL, timeout=20)
+        bond_response.raise_for_status()
+        for item in bond_response.json():
+            if item.get("reutersCode") == "US10YT=RR":
+                snapshots.append(parse_marketindex_quote(item, "미국 10년물"))
+                break
+
+        majors_response = self.session.get(MARKETINDEX_MAJORS_RPC_URL, timeout=20)
+        majors_response.raise_for_status()
+        for item in majors_response.json():
+            if item.get("reutersCode") == ".DXY":
+                snapshots.append(parse_marketindex_quote(item, "달러인덱스"))
+                break
         return snapshots
 
     def fetch_oil_markets(self) -> list[IndexSnapshot]:
+        response = self.session.get(MARKETINDEX_ENERGY_URL, timeout=20)
+        response.raise_for_status()
+        payloads = {item["reutersCode"]: item for item in response.json()}
         snapshots: list[IndexSnapshot] = []
-        for symbol, label in OIL_MARKET_SPECS:
-            snapshot = self._try_fetch_yahoo_snapshot(symbol, label)
-            if snapshot is not None:
-                snapshots.append(snapshot)
+        for code, label in OIL_MARKET_CODES:
+            payload = payloads.get(code)
+            if payload is not None:
+                snapshots.append(parse_marketindex_quote(payload, label))
         return snapshots
 
     def fetch_global_headlines(self, limit: int = 4) -> list[str]:
@@ -130,21 +158,6 @@ class NaverClient:
             include_keywords=OIL_NEWS_KEYWORDS,
             exclude_keywords=OIL_NEWS_EXCLUDE_KEYWORDS,
         )
-
-    def _try_fetch_yahoo_snapshot(self, symbol: str, label: str) -> IndexSnapshot | None:
-        try:
-            return self.fetch_yahoo_snapshot(symbol, label)
-        except Exception:
-            return None
-
-    def fetch_yahoo_snapshot(self, symbol: str, label: str) -> IndexSnapshot:
-        response = self.session.get(
-            YAHOO_CHART_URL.format(symbol=symbol),
-            params={"interval": "1d", "range": "5d"},
-            timeout=20,
-        )
-        response.raise_for_status()
-        return parse_yahoo_chart_snapshot(response.json(), label)
 
     def _fetch_google_news_headlines(
         self,
@@ -178,27 +191,70 @@ def _to_float(text: str) -> float:
     return float(text.replace(',', '').replace('%', '').strip())
 
 
-def parse_yahoo_chart_snapshot(payload: dict, label: str) -> IndexSnapshot:
-    result = payload["chart"]["result"][0]
-    meta = result["meta"]
-    closes = result.get("indicators", {}).get("quote", [{}])[0].get("close", [])
-    valid_closes = [float(close) for close in closes if close is not None]
-
-    if len(valid_closes) >= 2:
-        previous = valid_closes[-2]
-        current = valid_closes[-1]
-    else:
-        current = float(meta["regularMarketPrice"])
-        previous = float(meta["chartPreviousClose"])
-
-    change_value = current - previous
-    change_percent = (change_value / previous) * 100 if previous else 0.0
+def parse_stock_indicator(payload: dict, label: str) -> IndexSnapshot:
     return IndexSnapshot(
         name=label,
-        value=current,
-        change_value=change_value,
-        change_percent=change_percent,
+        value=_to_float(payload["currentPrice"]),
+        change_value=_to_signed_float(payload["fluctuations"], payload.get("fluctuationsType")),
+        change_percent=_to_signed_float(payload["fluctuationsRatio"], payload.get("fluctuationsType")),
     )
+
+
+def parse_marketindex_quote(payload: dict, label: str) -> IndexSnapshot:
+    change_type = payload.get("fluctuationsType") or payload.get("compareToPreviousPrice")
+    if isinstance(change_type, dict):
+        change_type = change_type.get("name") or change_type.get("text") or change_type.get("code")
+    return IndexSnapshot(
+        name=label,
+        value=_to_float(payload["closePrice"]),
+        change_value=_to_signed_float(payload.get("fluctuations") or payload.get("compareToPreviousClosePrice"), change_type),
+        change_percent=_to_signed_float(payload["fluctuationsRatio"], change_type),
+    )
+
+
+def parse_stock_exchange_rate(payload: dict) -> ExchangeRateSnapshot:
+    source = payload.get("stockExchangeType", {}).get("nameKor") or payload.get("description") or "stock.naver"
+    change_type = payload.get("fluctuationsType", {}).get("text", "보합")
+    return ExchangeRateSnapshot(
+        name="USD/KRW",
+        value=_to_float(payload.get("calcPrice") or payload["closePrice"]),
+        change_value=abs(_to_float(payload["fluctuations"])),
+        direction=change_type,
+        source=source,
+    )
+
+
+def parse_stock_investor_snapshot(payload: dict) -> InvestorSnapshot:
+    trend = payload.get("dealTrendInfo") or {}
+    return InvestorSnapshot(
+        basis_label=trend.get("bizdate", ""),
+        individual=_to_int(trend.get("personalValue", "0")),
+        foreign=_to_int(trend.get("foreignValue", "0")),
+        institution=_to_int(trend.get("institutionalValue", "0")),
+        financial_investment=0,
+        insurance=0,
+        trust_private=0,
+        bank=0,
+        other_financial=0,
+        pension=0,
+        other_corporation=0,
+    )
+
+
+def parse_domestic_top_stock(payload: dict) -> TopStock:
+    return TopStock(
+        code=str(payload["itemcode"]),
+        name=payload["itemname"],
+        price=_to_float(payload["nowPrice"]),
+        change_percent=_to_float(payload["prevChangeRate"]),
+    )
+
+
+def _to_signed_float(text: str, direction: str | None) -> float:
+    value = abs(_to_float(text))
+    if direction in {"FALLING", "하락", "5"}:
+        return -value
+    return value
 
 
 def parse_google_news_rss(
