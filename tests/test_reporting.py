@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, OptionExpiryInfo, TopStock
 from stock_tracker.reporting import build_briefing_payload
 
 
@@ -36,6 +36,14 @@ def make_data() -> BriefingData:
             TopStock(code="114800", name="KODEX 인버스", price=1121.0, change_percent=2.37),
             TopStock(code="003280", name="흥아해운", price=2780.0, change_percent=4.12),
         ],
+        option_expiry=OptionExpiryInfo(
+            next_expiry=date(2026, 5, 14),
+            days_until=2,
+            is_today=False,
+            is_this_week=True,
+            is_quarterly_witching=False,
+            label="이번 주 옵션 만기 예정 5/14 (D-2)",
+        ),
         notes=["장중 수치는 잠정치일 수 있습니다."],
         sources=["Naver Finance polling API", "Naver Finance investorDealTrendTime"],
     )
@@ -53,6 +61,14 @@ def make_morning_data() -> BriefingData:
         exchange_rate=ExchangeRateSnapshot(name="USD/KRW", value=1396.20, change_value=5.20, direction="상승", source="하나은행"),
         investors=None,
         leaders=[],
+        option_expiry=OptionExpiryInfo(
+            next_expiry=date(2026, 6, 11),
+            days_until=0,
+            is_today=True,
+            is_this_week=True,
+            is_quarterly_witching=True,
+            label="오늘은 선물·옵션 동시만기일입니다",
+        ),
         notes=["미국장은 전일 마감 기준입니다."],
         sources=["Yahoo Finance chart API", "Google News RSS", "Naver marketindex"],
         global_markets=[
@@ -120,6 +136,19 @@ def test_build_briefing_payload_includes_exchange_rate_in_overview() -> None:
 
     assert "*환율*" in blocks_text
     assert "<https://stock.naver.com/marketindex/exchange/FX_USDKRW/price|USD/KRW> 1,488.70원 (상승 13.70)" in blocks_text
+
+
+def test_build_briefing_payload_includes_option_expiry_overview() -> None:
+    payload = build_briefing_payload(make_data())
+    blocks_text = "\n".join(
+        item["text"]
+        for block in payload["blocks"]
+        for item in block.get("fields", []) + ([block["text"]] if "text" in block else [])
+        if isinstance(item, dict) and item.get("type") == "mrkdwn"
+    )
+
+    assert "*파생 일정*" in blocks_text
+    assert "이번 주 옵션 만기 예정 5/14 (D-2)" in blocks_text
 
 
 def test_build_briefing_payload_omits_investor_detail_block_when_detail_data_missing() -> None:
@@ -197,10 +226,12 @@ def test_build_morning_briefing_payload_groups_overnight_news_and_oil() -> None:
     )
 
     assert payload["text"].startswith("[장 시작 전 브리핑 | 2026-05-13 08:00 KST]")
+    assert "*파생 일정*" in blocks_text
     assert "*밤사이 미장 체크*" in blocks_text
     assert "*핵심 뉴스*" in blocks_text
     assert "*오늘 국내장 예상*" in blocks_text
     assert "*원유 추가 브리핑*" in blocks_text
+    assert "오늘은 선물·옵션 동시만기일입니다" in blocks_text
     assert "S&P 500" in blocks_text
     assert "미 연준 인사 발언 이후 금리 인하 기대가 후퇴했습니다." in blocks_text
     assert "WTI" in blocks_text

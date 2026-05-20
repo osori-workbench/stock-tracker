@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, OptionExpiryInfo, TopStock
 
 MODE_TITLES = {
     "morning": "장 시작 전 브리핑",
@@ -25,6 +25,10 @@ def format_index_line(index: IndexSnapshot) -> str:
 
 def format_exchange_rate_line(rate: ExchangeRateSnapshot) -> str:
     return f"<{NAVER_USD_KRW_URL}|{rate.name}> {rate.value:,.2f}원 ({rate.direction} {rate.change_value:.2f})"
+
+
+def format_option_expiry_line(info: OptionExpiryInfo) -> str:
+    return info.label
 
 
 def build_stock_link(stock: TopStock) -> str:
@@ -147,6 +151,8 @@ def build_market_overview_block(data: BriefingData) -> dict:
         {"type": "mrkdwn", "text": f"*지수*\n{index_lines}"},
         {"type": "mrkdwn", "text": f"*환율*\n{rate_line}"},
     ]
+    if data.option_expiry is not None:
+        fields.append({"type": "mrkdwn", "text": f"*파생 일정*\n{format_option_expiry_line(data.option_expiry)}"})
     if has_investor_detail(investor):
         fields.append(
             {"type": "mrkdwn", "text": f"*기관 세부*\n금융투자 {format_eok_to_jo(investor.financial_investment)}\n보험 {format_eok_to_jo(investor.insurance)}\n투신(사모) {format_eok_to_jo(investor.trust_private)}\n연기금 {format_eok_to_jo(investor.pension)}"}
@@ -161,13 +167,16 @@ def build_market_overview_block(data: BriefingData) -> dict:
 def build_morning_domestic_block(data: BriefingData) -> dict:
     index_lines = "\n".join(f"• {format_index_line(index)}" for index in data.indices)
     rate_line = format_exchange_rate_line(data.exchange_rate) if data.exchange_rate else "집계 실패"
+    fields = [
+        {"type": "mrkdwn", "text": f"*전일 지수*\n{index_lines}"},
+        {"type": "mrkdwn", "text": f"*환율*\n{rate_line}"},
+    ]
+    if data.option_expiry is not None:
+        fields.append({"type": "mrkdwn", "text": f"*파생 일정*\n{format_option_expiry_line(data.option_expiry)}"})
     return {
         "type": "section",
         "text": {"type": "mrkdwn", "text": f"*국내 기준선*\n<{NAVER_INDEX_URL}|전일 국내 지수>와 환율 기준선입니다."},
-        "fields": [
-            {"type": "mrkdwn", "text": f"*전일 지수*\n{index_lines}"},
-            {"type": "mrkdwn", "text": f"*환율*\n{rate_line}"},
-        ],
+        "fields": fields,
     }
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 
 @dataclass(slots=True)
@@ -45,6 +45,16 @@ class TopStock:
 
 
 @dataclass(slots=True)
+class OptionExpiryInfo:
+    next_expiry: date
+    days_until: int
+    is_today: bool
+    is_this_week: bool
+    is_quarterly_witching: bool
+    label: str
+
+
+@dataclass(slots=True)
 class BriefingData:
     mode: str
     now: datetime
@@ -53,6 +63,7 @@ class BriefingData:
     exchange_rate: ExchangeRateSnapshot | None
     investors: InvestorSnapshot | None = None
     leaders: list[TopStock] = field(default_factory=list)
+    option_expiry: OptionExpiryInfo | None = None
     notes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     global_markets: list[IndexSnapshot] = field(default_factory=list)

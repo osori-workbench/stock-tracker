@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
-from stock_tracker.calendar import KST, is_market_session_open
+from stock_tracker.calendar import KST, describe_option_expiry, is_market_session_open
 from stock_tracker.llm import ReviewResult
 from stock_tracker.models import BriefingData
 from stock_tracker.naver import NaverClient
@@ -29,6 +29,7 @@ class Collector:
     client: NaverClient
 
     def collect(self, mode: str, now: datetime) -> BriefingData:
+        option_expiry = describe_option_expiry(now.date())
         if mode == "morning":
             return BriefingData(
                 mode=mode,
@@ -41,6 +42,7 @@ class Collector:
                 exchange_rate=self.client.fetch_exchange_rate(),
                 investors=None,
                 leaders=[],
+                option_expiry=option_expiry,
                 notes=["미국장은 전일 마감 기준입니다."],
                 sources=[
                     "Yahoo Finance chart API",
@@ -66,6 +68,7 @@ class Collector:
             exchange_rate=self.client.fetch_exchange_rate(),
             investors=self.client.fetch_investors(now.date(), intraday=intraday),
             leaders=self.client.fetch_top_volume(limit=5),
+            option_expiry=option_expiry,
             notes=["장중 수치는 잠정치일 수 있습니다."] if intraday else [],
             sources=[
                 "Naver Finance polling API",

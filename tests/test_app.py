@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from stock_tracker.app import run_mode
+from stock_tracker.app import Collector, run_mode
 from stock_tracker.llm import ReviewResult
 from stock_tracker.models import BriefingData, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot
 
@@ -35,6 +35,49 @@ class FakeReviewer:
     def generate(self, data: BriefingData) -> ReviewResult:
         self.calls.append(data)
         return self.result
+
+
+class StubNaverClient:
+    def fetch_index(self, code: str) -> IndexSnapshot:
+        return IndexSnapshot(name=code, value=2600.0, change_value=1.0, change_percent=0.1)
+
+    def fetch_exchange_rate(self) -> ExchangeRateSnapshot:
+        return ExchangeRateSnapshot(name="USD/KRW", value=1400.0, change_value=2.0, direction="상승", source="하나은행")
+
+    def fetch_investors(self, target_date: date, intraday: bool) -> InvestorSnapshot:
+        assert target_date == date(2026, 5, 12)
+        assert intraday is True
+        return InvestorSnapshot(
+            basis_label="09:10",
+            individual=100,
+            foreign=-50,
+            institution=-25,
+            financial_investment=0,
+            insurance=0,
+            trust_private=0,
+            bank=0,
+            other_financial=0,
+            pension=0,
+            other_corporation=0,
+        )
+
+    def fetch_top_volume(self, limit: int = 5) -> list:
+        assert limit == 5
+        return []
+
+    def fetch_global_markets(self) -> list:
+        return []
+
+    def fetch_global_headlines(self, limit: int = 4) -> list[str]:
+        assert limit == 4
+        return []
+
+    def fetch_oil_markets(self) -> list:
+        return []
+
+    def fetch_oil_headlines(self, limit: int = 2) -> list[str]:
+        assert limit == 2
+        return []
 
 
 def make_payload() -> BriefingData:
@@ -125,6 +168,18 @@ def test_run_mode_sends_message_when_market_open() -> None:
     assert len(slack.messages) == 1
     assert "국장 오픈 10분" in slack.messages[0]["text"]
     assert slack.messages[0]["blocks"][0]["type"] == "header"
+
+
+def test_collector_collect_includes_option_expiry_context() -> None:
+    collector = Collector(client=StubNaverClient())
+
+    payload = collector.collect("open", datetime(2026, 5, 12, 9, 10, tzinfo=KST))
+
+    assert payload.option_expiry is not None
+    assert payload.option_expiry.next_expiry == date(2026, 5, 14)
+    assert payload.option_expiry.days_until == 2
+    assert payload.option_expiry.is_this_week is True
+    assert payload.option_expiry.label == "이번 주 옵션 만기 예정 5/14 (D-2)"
 
 
 def test_run_mode_uses_reviewer_output_when_provided() -> None:
