@@ -68,7 +68,7 @@ def make_data() -> BriefingData:
 def test_hermes_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
     runner = FakeRunner(
         FakeCompletedProcess(
-            stdout="session_id: 20260512_200148_92e18c\n- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다.\n전략: 오늘 제 대응은 관망 후 강한 종목만 소액 분할 매수입니다.\n"
+            stdout="session_id: 20260512_200148_92e18c\n- 외국인과 기관이 동반 순매수라 수급의 질이 괜찮습니다.\n- 환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.\n- 추격매수보다 주도주 지속성 확인이 더 중요합니다.\n판정: 상방 우위\n행동: 주도주 눌림 분할 매수\n확신도: 4/5\n전략: 오늘 제 대응은 강한 종목 눌림에서만 분할 매수입니다.\n"
         )
     )
     generator = HermesCliReviewGenerator(hermes_bin="/Users/osori/.local/bin/hermes", runner=runner, model="gpt-5.4")
@@ -81,7 +81,10 @@ def test_hermes_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
             "환율 상승은 부담이지만 반도체 대형주가 지수를 지지합니다.",
             "추격매수보다 주도주 지속성 확인이 더 중요합니다.",
         ],
-        strategy="오늘 제 대응은 관망 후 강한 종목만 소액 분할 매수입니다.",
+        bias="상방 우위",
+        action="주도주 눌림 분할 매수",
+        confidence=4,
+        strategy="오늘 제 대응은 강한 종목 눌림에서만 분할 매수입니다.",
         fallback_notice=None,
     )
     assert runner.calls[0]["command"][0] == "/Users/osori/.local/bin/hermes"
@@ -89,6 +92,9 @@ def test_hermes_cli_review_generator_parses_bullets_and_builds_prompt() -> None:
     assert "KOSPI" in runner.calls[0]["command"][3]
     assert "삼성전자" in runner.calls[0]["command"][3]
     assert "JSON 데이터" in runner.calls[0]["command"][3]
+    assert '"decision_framework"' in runner.calls[0]["command"][3]
+    assert '"output_contract"' in runner.calls[0]["command"][3]
+    assert '"market_bias_hint"' in runner.calls[0]["command"][3]
     assert "--quiet" in runner.calls[0]["command"]
 
 
@@ -99,4 +105,29 @@ def test_hermes_cli_review_generator_returns_fallback_notice_when_command_fails(
     result = generator.generate(make_data())
 
     assert result.points == []
+    assert result.bias is None
+    assert result.action is None
+    assert result.confidence is None
     assert result.fallback_notice == "추론이 실패해서 규칙기반으로 나온 리뷰입니다."
+
+
+def test_hermes_cli_review_generator_allows_structured_neutral_output() -> None:
+    runner = FakeRunner(
+        FakeCompletedProcess(
+            stdout="- 지수는 버티지만 환율과 수급이 엇갈립니다.\n- 거래 상위 종목도 방어주와 주도주가 섞여 있습니다.\n판정: 중립\n행동: 관망\n확신도: 2/5\n전략: 신호가 한쪽으로 모일 때까지 신규 진입은 늦추겠습니다.\n"
+        )
+    )
+    generator = HermesCliReviewGenerator(hermes_bin="hermes", runner=runner)
+
+    result = generator.generate(make_data())
+
+    assert result.bias == "중립"
+    assert result.action == "관망"
+    assert result.confidence == 2
+    assert result.strategy == "신호가 한쪽으로 모일 때까지 신규 진입은 늦추겠습니다."
+
+
+def test_hermes_cli_omits_model_flag_by_default() -> None:
+    runner = FakeRunner(FakeCompletedProcess(stdout="- 해석입니다.\n판정: 중립\n행동: 관망\n확신도: 2/5\n전략: 대기합니다.\n"))
+    HermesCliReviewGenerator(hermes_bin="hermes", runner=runner).generate(make_data())
+    assert "-m" not in runner.calls[0]["command"]

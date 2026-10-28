@@ -246,12 +246,26 @@ def build_review_block(
     }
 
 
-def build_strategy_block(strategy: str | None) -> dict | None:
-    if not strategy:
+def build_strategy_block(
+    strategy: str | None,
+    strategy_bias: str | None = None,
+    strategy_action: str | None = None,
+    strategy_confidence: int | None = None,
+) -> dict | None:
+    if not any([strategy, strategy_bias, strategy_action, strategy_confidence is not None]):
         return None
+    lines: list[str] = []
+    if strategy_bias:
+        lines.append(f"판정: {strategy_bias}")
+    if strategy_action:
+        lines.append(f"행동: {strategy_action}")
+    if strategy_confidence is not None:
+        lines.append(f"확신도: {strategy_confidence}/5")
+    if strategy:
+        lines.append(f"전략: {strategy}")
     return {
         "type": "section",
-        "text": {"type": "mrkdwn", "text": "*한줄 전략*\n• " + strategy},
+        "text": {"type": "mrkdwn", "text": "*한줄 전략*\n" + "\n".join(f"• {line}" for line in lines)},
     }
 
 
@@ -259,6 +273,9 @@ def build_morning_briefing_payload(
     data: BriefingData,
     review_points: list[str] | None = None,
     strategy: str | None = None,
+    strategy_bias: str | None = None,
+    strategy_action: str | None = None,
+    strategy_confidence: int | None = None,
     fallback_notice: str | None = None,
 ) -> dict:
     summary = build_summary_text(data)
@@ -271,7 +288,12 @@ def build_morning_briefing_payload(
         build_headlines_block("핵심 뉴스", data.headlines),
         build_review_block(data, review_points=review_points, fallback_notice=fallback_notice, title="오늘 국내장 예상"),
         build_oil_block(data),
-        build_strategy_block(strategy),
+        build_strategy_block(
+            strategy,
+            strategy_bias=strategy_bias,
+            strategy_action=strategy_action,
+            strategy_confidence=strategy_confidence,
+        ),
     ]:
         if block is not None:
             blocks.append(block)
@@ -283,10 +305,21 @@ def build_briefing_payload(
     data: BriefingData,
     review_points: list[str] | None = None,
     strategy: str | None = None,
+    strategy_bias: str | None = None,
+    strategy_action: str | None = None,
+    strategy_confidence: int | None = None,
     fallback_notice: str | None = None,
 ) -> dict:
     if data.mode == "morning":
-        return build_morning_briefing_payload(data, review_points=review_points, strategy=strategy, fallback_notice=fallback_notice)
+        return build_morning_briefing_payload(
+            data,
+            review_points=review_points,
+            strategy=strategy,
+            strategy_bias=strategy_bias,
+            strategy_action=strategy_action,
+            strategy_confidence=strategy_confidence,
+            fallback_notice=fallback_notice,
+        )
 
     summary = build_summary_text(data)
     blocks = [
@@ -301,7 +334,12 @@ def build_briefing_payload(
             build_review_block(data, review_points=review_points, fallback_notice=fallback_notice),
         ]
     )
-    strategy_block = build_strategy_block(strategy)
+    strategy_block = build_strategy_block(
+        strategy,
+        strategy_bias=strategy_bias,
+        strategy_action=strategy_action,
+        strategy_confidence=strategy_confidence,
+    )
     if strategy_block is not None:
         blocks.append(strategy_block)
     blocks.append({"type": "divider"})

@@ -100,6 +100,9 @@ def run_mode(
         briefing,
         review_points=review_result.points if review_result is not None and review_result.points else None,
         strategy=review_result.strategy if review_result is not None else None,
+        strategy_bias=review_result.bias if review_result is not None else None,
+        strategy_action=review_result.action if review_result is not None else None,
+        strategy_confidence=review_result.confidence if review_result is not None else None,
         fallback_notice=review_result.fallback_notice if review_result is not None else None,
     )
     slack.send(payload)

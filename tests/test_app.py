@@ -191,7 +191,10 @@ def test_run_mode_uses_reviewer_output_when_provided() -> None:
                 "외국인 매수 우위가 지수 방어에 기여했습니다.",
                 "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다.",
             ],
-            strategy="제 기준이면 오늘은 관망 후 눌림에서만 소액 분할 매수를 보겠습니다.",
+            bias="상방 우위",
+            action="주도주 눌림 분할 매수",
+            confidence=4,
+            strategy="제 기준이면 오늘은 강한 종목 눌림에서만 분할 매수를 보겠습니다.",
             fallback_notice=None,
         )
     )
@@ -211,7 +214,10 @@ def test_run_mode_uses_reviewer_output_when_provided() -> None:
     assert "환율 부담은 있지만 급격한 리스크오프 해석까지는 아닙니다." in review_block_text
     strategy_block_text = slack.messages[0]["blocks"][-2]["text"]["text"]
     assert "*한줄 전략*" in strategy_block_text
-    assert "제 기준이면 오늘은 관망 후 눌림에서만 소액 분할 매수를 보겠습니다." in strategy_block_text
+    assert "판정: 상방 우위" in strategy_block_text
+    assert "행동: 주도주 눌림 분할 매수" in strategy_block_text
+    assert "확신도: 4/5" in strategy_block_text
+    assert "전략: 제 기준이면 오늘은 강한 종목 눌림에서만 분할 매수를 보겠습니다." in strategy_block_text
 
 
 def test_run_mode_shows_fallback_notice_when_reviewer_fails() -> None:

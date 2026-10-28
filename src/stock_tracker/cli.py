@@ -31,7 +31,7 @@ def main() -> None:
     slack = SlackWebhookClient(webhook_url=webhook_url)
     reviewer = HermesCliReviewGenerator(
         hermes_bin=os.environ.get('HERMES_BIN'),
-        model=os.environ.get('HERMES_REVIEW_MODEL', DEFAULT_HERMES_MODEL),
+        model=os.environ.get('HERMES_REVIEW_MODEL') or DEFAULT_HERMES_MODEL,
     )
     sent = run_mode(args.mode, now=now, collector=collector, slack=slack, reviewer=reviewer)
     if not sent:

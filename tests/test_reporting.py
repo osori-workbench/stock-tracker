@@ -216,7 +216,10 @@ def test_build_morning_briefing_payload_groups_overnight_news_and_oil() -> None:
             "미국 기술주 약세와 금리 상승이 겹쳐 오늘 국장 대형주에는 부담이 예상됩니다.",
             "환율까지 오르면 외국인 수급이 보수적으로 움직일 가능성을 봐야 합니다.",
         ],
-        strategy="오늘은 관망 위주로 보되 눌림이 와도 소액 분할만 고려하겠습니다.",
+        strategy="오늘은 시가 추격보다 눌림 확인 뒤 분할 접근이 낫겠습니다.",
+        strategy_bias="하방 우위",
+        strategy_action="관망 후 눌림 분할 매수",
+        strategy_confidence=2,
     )
     blocks_text = "\n".join(
         item["text"]
@@ -238,4 +241,7 @@ def test_build_morning_briefing_payload_groups_overnight_news_and_oil() -> None:
     assert "브렌트" in blocks_text
     assert "미국 기술주 약세와 금리 상승이 겹쳐 오늘 국장 대형주에는 부담이 예상됩니다." in blocks_text
     assert "*한줄 전략*" in blocks_text
-    assert "관망" in blocks_text
+    assert "판정: 하방 우위" in blocks_text
+    assert "행동: 관망 후 눌림 분할 매수" in blocks_text
+    assert "확신도: 2/5" in blocks_text
+    assert "전략: 오늘은 시가 추격보다 눌림 확인 뒤 분할 접근이 낫겠습니다." in blocks_text
