@@ -5,10 +5,13 @@ import shutil
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Callable, Protocol
+
+import requests
 
 from stock_tracker.models import BriefingData
 
+DEFAULT_ASK_API_URL = "http://127.0.0.1:8787"
 DEFAULT_HERMES_MODEL: str | None = None  # None -> Hermes 기본 모델 사용
 DEFAULT_FALLBACK_NOTICE = "추론이 실패해서 규칙기반으로 나온 리뷰입니다."
 DEFAULT_STRATEGY_FALLBACK = "전략 추론이 실패해 한줄 전략은 이번 브리핑에서 생략하겠습니다."
@@ -57,6 +60,50 @@ class Runner(Protocol):
         timeout: int,
         check: bool,
     ) -> subprocess.CompletedProcess[str]: ...
+
+
+class HermesAskApiReviewGenerator:
+    """hermes-ask-api(/ask)로 리뷰를 생성한다. 실패 시 규칙기반 폴백 결과를 반환한다."""
+
+    def __init__(
+        self,
+        base_url: str = DEFAULT_ASK_API_URL,
+        post: Callable[..., Any] | None = None,
+        timeout: int = 150,
+        ask_timeout_sec: int = 120,
+    ) -> None:
+        self.url = base_url.rstrip("/") if base_url.rstrip("/").endswith("/ask") else f"{base_url.rstrip('/')}/ask"
+        self.post = post or requests.post
+        self.timeout = timeout
+        self.ask_timeout_sec = ask_timeout_sec
+
+    def generate(self, data: BriefingData) -> ReviewResult:
+        prompt = SYSTEM_PROMPT + "\n\n" + build_user_prompt(data)
+        try:
+            response = self.post(
+                self.url,
+                json={"prompt": prompt, "context": {}, "options": {"timeout_sec": self.ask_timeout_sec}},
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            answer = (response.json().get("answer") or "").strip()
+        except Exception:
+            return _fallback_result()
+        points, bias, action, confidence, strategy = parse_review_output(answer)
+        if not points:
+            return _fallback_result()
+        return ReviewResult(
+            points=points,
+            bias=bias,
+            action=action,
+            confidence=confidence,
+            strategy=strategy or DEFAULT_STRATEGY_FALLBACK,
+            fallback_notice=None,
+        )
+
+
+def _fallback_result() -> ReviewResult:
+    return ReviewResult(points=[], strategy=DEFAULT_STRATEGY_FALLBACK, fallback_notice=DEFAULT_FALLBACK_NOTICE)
 
 
 class HermesCliReviewGenerator:

@@ -131,3 +131,40 @@ def test_hermes_cli_omits_model_flag_by_default() -> None:
     runner = FakeRunner(FakeCompletedProcess(stdout="- 해석입니다.\n판정: 중립\n행동: 관망\n확신도: 2/5\n전략: 대기합니다.\n"))
     HermesCliReviewGenerator(hermes_bin="hermes", runner=runner).generate(make_data())
     assert "-m" not in runner.calls[0]["command"]
+
+
+class FakeResponse:
+    def __init__(self, payload: dict, status: int = 200) -> None:
+        self.payload, self.status = payload, status
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise RuntimeError(f"HTTP {self.status}")
+
+    def json(self) -> dict:
+        return self.payload
+
+
+def test_ask_api_generator_parses_answer_and_posts_prompt() -> None:
+    from stock_tracker.llm import HermesAskApiReviewGenerator
+
+    calls: list[dict] = []
+
+    def post(url, **kwargs):
+        calls.append({"url": url, **kwargs})
+        return FakeResponse({"answer": "- 수급이 좋습니다.\n판정: 상방 우위\n행동: 분할 매수\n확신도: 4/5\n전략: 눌림 매수입니다."})
+
+    result = HermesAskApiReviewGenerator(base_url="http://127.0.0.1:8787", post=post).generate(make_data())
+
+    assert calls[0]["url"] == "http://127.0.0.1:8787/ask"
+    assert "JSON 데이터" in calls[0]["json"]["prompt"]
+    assert result.points == ["수급이 좋습니다."]
+    assert result.bias == "상방 우위" and result.confidence == 4 and result.fallback_notice is None
+
+
+def test_ask_api_generator_falls_back_on_http_error_and_exception() -> None:
+    from stock_tracker.llm import DEFAULT_FALLBACK_NOTICE, HermesAskApiReviewGenerator
+
+    for post in (lambda url, **kw: FakeResponse({}, 500), lambda url, **kw: (_ for _ in ()).throw(ConnectionError())):
+        result = HermesAskApiReviewGenerator(post=post).generate(make_data())
+        assert result.points == [] and result.fallback_notice == DEFAULT_FALLBACK_NOTICE
