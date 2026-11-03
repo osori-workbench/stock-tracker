@@ -28,6 +28,9 @@ SYSTEM_PROMPT = """당신은 한국 주식시장 브리핑 애널리스트입니
 'morning' 모드에서는 밤사이 미국시장/뉴스/환율을 바탕으로 오늘 국내장의 부담과 체크포인트를 추론하세요.
 원유 평가는 별도 블록으로 내려가므로 morning 모드 리뷰에서는 국내장 해석에 집중하세요.
 'open'/'noon'/'close' 모드에서는 수급, 지수 방향, 환율, 거래 상위 종목의 성격을 연결해 해석하세요.
+판단의 중심은 monthly_context(최근 약 1개월 일봉 기반 지표)입니다. 오늘 하루 등락은 보조 근거로만 쓰고, 한 달 추세(수익률·고저점 대비 위치·변동성·이동평균·수급 누적) 속에서 오늘이 어떤 위치인지 해석하세요.
+monthly_context가 비어 있으면 이력 부족을 짧게 언급하고 당일 데이터로만 판단하세요.
+'review' 모드에서는 당일 수급 스냅샷이 없으니 한 달간의 지수·환율 흐름과 누적 수급을 종합해 월간 종합 리뷰를 쓰세요.
 먼저 방향을 판정하고, 그 다음 행동과 확신도를 정하세요.
 '관망'은 신호 충돌이 크거나 확신도가 1~2일 때만 쓰세요. 한쪽 신호가 우세하면 관망 대신 더 구체적인 행동을 제시하세요.
 '전략:' 줄에는 당신이라면 오늘 어떻게 대응할지 한 문장으로 짧게 쓰세요.
@@ -177,6 +180,10 @@ def build_user_prompt(data: BriefingData) -> str:
             "oil_markets": [asdict(index) for index in data.oil_markets],
             "oil_headlines": data.oil_headlines,
         },
+        "monthly_context": {
+            "summaries": [asdict(item) for item in data.monthly],
+            "kospi_investor_flow_accumulated_eok": asdict(data.monthly_flows) if data.monthly_flows else None,
+        },
         "decision_framework": build_decision_framework(data),
         "output_contract": {
             "review_bullets": "3~4 lines, each prefixed with '- '",
@@ -188,6 +195,7 @@ def build_user_prompt(data: BriefingData) -> str:
     }
     return (
         "아래 JSON 데이터만 근거로 국장 브리핑용 종합 리뷰를 작성해주세요.\n"
+        "하루 등락보다 monthly_context의 1개월 흐름을 중심으로 판단하고, 오늘은 그 흐름 속 위치로 해석해주세요.\n"
         "너무 뻔한 숫자 나열은 피하고, 데이터 사이의 연결관계를 해석해주세요.\n"
         "morning 모드면 오늘 국내장 예상과 체크포인트를, 그 외 모드면 수급/지수/환율/거래 상위 종목 해석을 중심으로 써주세요.\n"
         "decision_framework의 힌트를 참고하되 그대로 복창하지 말고 종합 판단하세요.\n"
@@ -216,6 +224,7 @@ def build_decision_framework(data: BriefingData) -> dict:
         conflict_flags.append("지수 약세 vs 외국인·기관 동반 순매수")
 
     return {
+        "monthly_trend_hint": [f"{item.symbol}: {item.trend_label}" for item in data.monthly],
         "market_bias_hint": infer_market_bias_hint(data, avg_index_change),
         "action_bias_hint": infer_action_bias_hint(data, avg_index_change, has_inverse_leaders),
         "confidence_hint": infer_confidence_hint(conflict_flags, avg_index_change, foreign, institution),

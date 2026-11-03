@@ -7,7 +7,7 @@ from datetime import date
 import requests
 from bs4 import BeautifulSoup
 
-from stock_tracker.models import ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
+from stock_tracker.models import DailyBar, ExchangeRateSnapshot, IndexSnapshot, InvestorSnapshot, TopStock
 
 STOCK_NAVER_BASE = "https://stock.naver.com"
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
@@ -17,6 +17,8 @@ DOMESTIC_INDEX_INTEGRATION_URL = f"{STOCK_NAVER_BASE}/api/securityFe/api/index/{
 WORLD_INDEX_POLLING_URL = f"{STOCK_NAVER_BASE}/api/polling/worldstock/index"
 MARKETINDEX_MAJORS_RPC_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/majors/rpc"
 MARKETINDEX_MAJORS_BOND_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/majors/bond"
+INDEX_CHART_URL = "https://api.stock.naver.com/chart/domestic/index/{code}"
+FX_PRICES_URL = "https://api.stock.naver.com/marketindex/exchange/FX_USDKRW/prices"
 MARKETINDEX_ENERGY_URL = f"{STOCK_NAVER_BASE}/api/securityService/marketindex/energy"
 GLOBAL_MARKET_CODES = [
     (".INX", "S&P 500"),
@@ -73,6 +75,21 @@ class NaverClient:
         )
         response.raise_for_status()
         return parse_marketindex_quote(response.json(), code)
+
+    def fetch_index_history(self, code: str) -> list[DailyBar]:
+        response = self.session.get(
+            INDEX_CHART_URL.format(code=code), params={"periodType": "dayCandle"}, timeout=20
+        )
+        response.raise_for_status()
+        return parse_index_chart(response.json())
+
+    def fetch_fx_history(self, pages: int = 2) -> list[DailyBar]:
+        bars: list[DailyBar] = []
+        for page in range(1, pages + 1):
+            response = self.session.get(FX_PRICES_URL, params={"page": page, "pageSize": 30}, timeout=20)
+            response.raise_for_status()
+            bars.extend(parse_fx_prices(response.json()))
+        return sorted(bars, key=lambda bar: bar.date)
 
     def fetch_exchange_rate(self) -> ExchangeRateSnapshot:
         response = self.session.get(MARKETINDEX_MAJORS_RPC_URL, timeout=20)
@@ -380,3 +397,30 @@ def parse_top_volume_rows(html: str, limit: int = 5) -> list[TopStock]:
         if len(stocks) >= limit:
             break
     return stocks
+
+
+def parse_index_chart(payload: dict) -> list[DailyBar]:
+    return [
+        DailyBar(
+            date=str(item["localDate"]),
+            open=item.get("openPrice"),
+            high=item.get("highPrice"),
+            low=item.get("lowPrice"),
+            close=float(item["closePrice"]),
+            volume=item.get("accumulatedTradingVolume"),
+        )
+        for item in payload.get("priceInfos", [])
+    ]
+
+
+def parse_fx_prices(payload: list[dict]) -> list[DailyBar]:
+    return [
+        DailyBar(
+            date=item["localTradedAt"].replace("-", ""),
+            open=None,
+            high=None,
+            low=None,
+            close=_to_float(item["closePrice"]),
+        )
+        for item in payload
+    ]

@@ -6,6 +6,7 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from stock_tracker.calendar import KST, describe_option_expiry, is_market_session_open
+from stock_tracker.history import HistoryService
 from stock_tracker.llm import ReviewResult
 from stock_tracker.models import BriefingData
 from stock_tracker.naver import NaverClient
@@ -17,6 +18,7 @@ MODE_LABELS = {
     "open": "개장 직후",
     "noon": "개장 중",
     "close": "마감 후",
+    "review": "월간 종합",
 }
 
 
@@ -56,6 +58,21 @@ class Collector:
                 oil_headlines=self.client.fetch_oil_headlines(limit=2),
             )
 
+        if mode == "review":
+            return BriefingData(
+                mode=mode,
+                now=now,
+                market_label=MODE_LABELS[mode],
+                indices=[
+                    self.client.fetch_index("KOSPI"),
+                    self.client.fetch_index("KOSDAQ"),
+                ],
+                exchange_rate=self.client.fetch_exchange_rate(),
+                investors=None,
+                option_expiry=option_expiry,
+                sources=["Naver Finance index chart", "Naver Finance FX prices", "stock_tracker.db"],
+            )
+
         intraday = mode in {"open", "noon"}
         return BriefingData(
             mode=mode,
@@ -84,6 +101,7 @@ def run_mode(
     collector: Collector | None = None,
     slack: SlackWebhookClient | None = None,
     reviewer: ReviewGenerator | None = None,
+    history: HistoryService | None = None,
 ) -> bool:
     current = now or datetime.now(tz=KST)
     if current.tzinfo is None:
@@ -95,6 +113,8 @@ def run_mode(
         raise ValueError('collector and slack must be provided')
 
     briefing = collector.collect(mode, current)
+    if history is not None:
+        attach_monthly_context(briefing, history, mode, current)
     review_result = reviewer.generate(briefing) if reviewer is not None else None
     payload = build_briefing_payload(
         briefing,
@@ -106,4 +126,28 @@ def run_mode(
         fallback_notice=review_result.fallback_notice if review_result is not None else None,
     )
     slack.send(payload)
+    if history is not None:
+        _save_review_safely(history, mode, current, review_result)
     return True
+
+
+def attach_monthly_context(briefing: BriefingData, history: HistoryService, mode: str, now: datetime) -> None:
+    """일봉을 DB에 동기화하고 1개월 지표를 붙인다. 실패해도 브리핑은 계속 보낸다."""
+    try:
+        history.sync(mode, now.date())
+        if mode == "close":
+            history.record_close(now.date(), briefing.investors)
+        briefing.monthly, briefing.monthly_flows = history.monthly(now.date())
+        if briefing.monthly:
+            briefing.sources.append("stock_tracker.db(1개월 일봉)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[history] skipped: {type(exc).__name__}: {exc}", flush=True)
+
+
+def _save_review_safely(history: HistoryService, mode: str, now: datetime, result: ReviewResult | None) -> None:
+    if result is None or not result.points:
+        return
+    try:
+        history.store.save_review(now.strftime("%Y%m%d"), mode, "\n".join(result.points))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[history] review save skipped: {type(exc).__name__}: {exc}", flush=True)

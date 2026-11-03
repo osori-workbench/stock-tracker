@@ -7,7 +7,10 @@ MODE_TITLES = {
     "open": "국장 오픈 10분",
     "noon": "국장 장중 정오 리뷰",
     "close": "국장 마감 리뷰",
+    "review": "월간 종합 리뷰",
 }
+
+MONTHLY_SYMBOL_LABELS = {"KOSPI": "KOSPI", "KOSDAQ": "KOSDAQ", "USDKRW": "USD/KRW"}
 
 NAVER_ITEM_URL = "https://stock.naver.com/domestic/stock/{code}/price"
 NAVER_INDEX_URL = "https://stock.naver.com/market/stock/kr"
@@ -164,6 +167,58 @@ def build_market_overview_block(data: BriefingData) -> dict:
     }
 
 
+def build_monthly_block(data: BriefingData) -> dict | None:
+    if not data.monthly:
+        return None
+    lines = []
+    for item in data.monthly:
+        label = MONTHLY_SYMBOL_LABELS.get(item.symbol, item.symbol)
+        lines.append(
+            f"• *{label}* 한 달 {item.return_pct:+.2f}% · 고점 대비 {item.from_high_pct:+.1f}% · "
+            f"변동성 {item.volatility_pct:.2f}% · 20일선 대비 {item.vs_ma20_pct:+.1f}% — {item.trend_label}"
+        )
+    first, last = data.monthly[0], data.monthly[0]
+    period = f"{first.start_date[:4]}-{first.start_date[4:6]}-{first.start_date[6:]} ~ {last.end_date[:4]}-{last.end_date[4:6]}-{last.end_date[6:]}"
+    if data.monthly_flows:
+        flows = data.monthly_flows
+        lines.append(
+            f"• *KOSPI 누적 수급({flows.days}일)* 개인 {format_eok_to_jo(flows.individual)} / "
+            f"외국인 {format_eok_to_jo(flows.foreign)} / 기관 {format_eok_to_jo(flows.institution)}"
+        )
+    return {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": f"*한 달 흐름* ({period})\n" + "\n".join(lines)},
+    }
+
+
+def build_review_mode_payload(
+    data: BriefingData,
+    review_points: list[str] | None = None,
+    strategy: str | None = None,
+    strategy_bias: str | None = None,
+    strategy_action: str | None = None,
+    strategy_confidence: int | None = None,
+    fallback_notice: str | None = None,
+) -> dict:
+    summary = build_summary_text(data)
+    blocks = [{"type": "header", "text": {"type": "plain_text", "text": summary, "emoji": True}}]
+    monthly_block = build_monthly_block(data)
+    if monthly_block is not None:
+        blocks.append(monthly_block)
+    points = review_points or [item.trend_label for item in data.monthly] or ["이력 데이터가 부족해 월간 리뷰를 만들지 못했습니다."]
+    blocks.append(build_review_block(data, review_points=points, fallback_notice=fallback_notice, title="한 달 종합 리뷰"))
+    strategy_block = build_strategy_block(
+        strategy,
+        strategy_bias=strategy_bias,
+        strategy_action=strategy_action,
+        strategy_confidence=strategy_confidence,
+    )
+    if strategy_block is not None:
+        blocks.append(strategy_block)
+    blocks.append({"type": "divider"})
+    return {"text": summary, "blocks": blocks}
+
+
 def build_morning_domestic_block(data: BriefingData) -> dict:
     index_lines = "\n".join(f"• {format_index_line(index)}" for index in data.indices)
     rate_line = format_exchange_rate_line(data.exchange_rate) if data.exchange_rate else "집계 실패"
@@ -284,6 +339,7 @@ def build_morning_briefing_payload(
         build_morning_domestic_block(data),
     ]
     for block in [
+        build_monthly_block(data),
         build_global_markets_block(data),
         build_headlines_block("핵심 뉴스", data.headlines),
         build_review_block(data, review_points=review_points, fallback_notice=fallback_notice, title="오늘 국내장 예상"),
@@ -310,6 +366,16 @@ def build_briefing_payload(
     strategy_confidence: int | None = None,
     fallback_notice: str | None = None,
 ) -> dict:
+    if data.mode == "review":
+        return build_review_mode_payload(
+            data,
+            review_points=review_points,
+            strategy=strategy,
+            strategy_bias=strategy_bias,
+            strategy_action=strategy_action,
+            strategy_confidence=strategy_confidence,
+            fallback_notice=fallback_notice,
+        )
     if data.mode == "morning":
         return build_morning_briefing_payload(
             data,
@@ -329,11 +395,10 @@ def build_briefing_payload(
     leaders_block = build_leaders_block(data)
     if leaders_block is not None:
         blocks.append(leaders_block)
-    blocks.extend(
-        [
-            build_review_block(data, review_points=review_points, fallback_notice=fallback_notice),
-        ]
-    )
+    monthly_block = build_monthly_block(data)
+    if monthly_block is not None:
+        blocks.append(monthly_block)
+    blocks.append(build_review_block(data, review_points=review_points, fallback_notice=fallback_notice))
     strategy_block = build_strategy_block(
         strategy,
         strategy_bias=strategy_bias,

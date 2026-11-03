@@ -6,6 +6,7 @@ from datetime import datetime
 
 from stock_tracker.app import Collector, run_mode
 from stock_tracker.calendar import KST
+from stock_tracker.history import DEFAULT_DB_PATH, HistoryService, HistoryStore
 from stock_tracker.llm import (
     DEFAULT_ASK_API_URL,
     DEFAULT_HERMES_MODEL,
@@ -16,7 +17,7 @@ from stock_tracker.naver import NaverClient
 from stock_tracker.slack import SlackWebhookClient
 
 
-VALID_MODES = ["morning", "open", "noon", "close"]
+VALID_MODES = ["morning", "open", "noon", "close", "review"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,7 +33,9 @@ def main() -> None:
 
     webhook_url = os.environ['SLACK_WEBHOOK_URL']
     now = datetime.fromisoformat(args.at).astimezone(KST) if args.at else datetime.now(tz=KST)
-    collector = Collector(client=NaverClient())
+    naver = NaverClient()
+    collector = Collector(client=naver)
+    history = HistoryService(store=HistoryStore(os.environ.get('STOCK_TRACKER_DB') or DEFAULT_DB_PATH), client=naver)
     slack = SlackWebhookClient(webhook_url=webhook_url)
     if os.environ.get('STOCK_TRACKER_REVIEW_BACKEND', 'ask-api') == 'cli':
         reviewer = HermesCliReviewGenerator(
@@ -43,7 +46,7 @@ def main() -> None:
         reviewer = HermesAskApiReviewGenerator(
             base_url=os.environ.get('HERMES_ASK_API_URL', DEFAULT_ASK_API_URL),
         )
-    sent = run_mode(args.mode, now=now, collector=collector, slack=slack, reviewer=reviewer)
+    sent = run_mode(args.mode, now=now, collector=collector, slack=slack, reviewer=reviewer, history=history)
     if not sent:
         print('시장 휴장일이라 브리핑을 보내지 않았습니다.')
 

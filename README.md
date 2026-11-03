@@ -212,3 +212,14 @@ crontab -l
 ```
 
 로그는 `logs/cron.log` 에 쌓입니다.
+
+## 1개월 추이 기반 종합 리뷰 (SQLite 히스토리)
+
+하루 등락만 보지 않고 최근 약 1개월(21거래일) 일봉을 기준으로 리뷰를 생성합니다.
+
+- 저장소: `data/stock_tracker.db` (SQLite, git 제외). 경로는 `STOCK_TRACKER_DB`로 변경 가능.
+  - `daily_prices` (KOSPI/KOSDAQ/USDKRW 일봉), `investor_flows` (KOSPI 일별 수급, close 모드에서 누적), `reviews` (발행 리뷰)
+- 실행 시마다 네이버 일봉 API(`api.stock.naver.com/chart/domestic/index/{code}`, `.../marketindex/exchange/FX_USDKRW/prices`)로 upsert 하므로 DB가 비어 있어도 첫 실행부터 1개월 지표가 나오고, 파일이 유실돼도 자동 복구됩니다. 마감 전 모드에서는 미확정인 오늘 봉을 저장하지 않습니다.
+- 지표: 월간 수익률, 고점·저점 대비 위치, 변동성, 최대낙폭, 상승/하락 일수, 5·20일선 대비, 거래량 추이, 누적 수급.
+- 모든 모드의 리뷰 프롬프트에 `monthly_context`가 들어가며, 하루 등락은 보조 근거로만 쓰도록 지시합니다. 히스토리 수집이 실패해도 브리핑은 그대로 발송됩니다.
+- `review` 모드: `uv run stock-tracker review` — 한 달 흐름 블록 + 월간 종합 리뷰 + 한줄 전략만 보내는 전용 모드. launchd 스케줄에는 포함되어 있지 않으니 필요하면 직접 등록하세요.
